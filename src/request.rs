@@ -127,7 +127,7 @@ pub(crate) fn parse_request(
         Body(Vec::new())
     };
 
-    Ok(request.body(body).map_err(|_| ParseError::Unknown)?)
+    request.body(body).map_err(|_| ParseError::Unknown)
 }
 
 #[cfg(test)]
