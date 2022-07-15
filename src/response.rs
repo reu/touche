@@ -1,5 +1,7 @@
 use std::io::{self, Write};
 
+use headers::HeaderMapExt;
+
 #[derive(Default)]
 pub enum Body {
     #[default]
@@ -55,7 +57,18 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
 
     match body {
         Body::Buffered(ref buf) if !buf.is_empty() => {
-            stream.write_all(format!("content-length: {}\r\n", buf.len()).as_bytes())?;
+            match parts.headers.typed_get::<headers::ContentLength>() {
+                Some(len) if len.0 != buf.len() as u64 => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "informed content-lenght header does not match body length",
+                    ))
+                }
+                Some(_len) => {}
+                None => {
+                    stream.write_all(format!("content-length: {}\r\n", buf.len()).as_bytes())?
+                }
+            };
         }
         Body::Chunked(ref _chunks) => {
             stream.write_all(b"transfer-encoding: chunked\r\n")?;
@@ -118,6 +131,18 @@ mod tests {
             output.get_ref(),
             b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nlol"
         );
+    }
+
+    #[test]
+    fn fails_when_the_informed_content_length_does_not_match_the_body_length() {
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .header("content-length", "5")
+            .body("lol".into())
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        assert!(write_response(res, &mut output).is_err());
     }
 
     #[test]
