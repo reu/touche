@@ -1,17 +1,26 @@
 use std::io::{self, Write};
 
 #[derive(Default)]
-pub struct Body(Vec<u8>);
+pub enum Body {
+    #[default]
+    Empty,
+    Buffered(Vec<u8>),
+    Chunked(Box<dyn Iterator<Item = Vec<u8>>>),
+}
 
 impl Body {
     pub fn empty() -> Self {
-        Body(Vec::new())
+        Body::Empty
+    }
+
+    pub fn chunked<T: Into<Vec<u8>>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
+        Body::Chunked(Box::new(chunks.into_iter().map(|chunk| chunk.into())))
     }
 }
 
 impl From<Vec<u8>> for Body {
     fn from(body: Vec<u8>) -> Self {
-        Self(body)
+        Body::Buffered(body)
     }
 }
 
@@ -44,12 +53,32 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
         stream.write_all(b"\r\n")?;
     }
 
-    if body.0.len() > 0 {
-        stream.write_all(format!("content-length: {}\r\n", body.0.len()).as_bytes())?;
-    }
+    match body {
+        Body::Buffered(ref buf) if !buf.is_empty() => {
+            stream.write_all(format!("content-length: {}\r\n", buf.len()).as_bytes())?;
+        }
+        Body::Chunked(ref _chunks) => {
+            stream.write_all(b"transfer-encoding: chunked\r\n")?;
+        }
+        _ => (),
+    };
 
     stream.write_all(b"\r\n")?;
-    stream.write_all(&body.0)?;
+
+    match body {
+        Body::Buffered(buf) => stream.write_all(&buf)?,
+        Body::Chunked(chunks) => {
+            stream.flush()?;
+            for chunk in chunks {
+                stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
+                stream.write_all(&chunk)?;
+                stream.write_all(b"\r\n")?;
+                stream.flush()?;
+            }
+            stream.write_all(b"0\r\n\r\n")?;
+        }
+        _ => (),
+    };
 
     Ok(())
 }
@@ -88,6 +117,22 @@ mod tests {
         assert_eq!(
             output.get_ref(),
             b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nlol"
+        );
+    }
+
+    #[test]
+    fn writes_chunked_responses() {
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::chunked(vec![b"chunk1".to_vec(), b"chunk2".to_vec()]))
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        write_response(res, &mut output).unwrap();
+
+        assert_eq!(
+            output.get_ref(),
+            b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n6\r\nchunk1\r\n6\r\nchunk2\r\n0\r\n\r\n"
         );
     }
 }
