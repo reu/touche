@@ -1,0 +1,9 @@
+[package]
+name = "shrike"
+version = "0.0.0"
+edition = "2021"
+authors = ["Rodrigo Navarro <rnavarro@rnavarro.com.br>"]
+license = "MIT"
+repository = "https://github.com/reu/shrike"
+categories = ["network-programming", "web-programming"]
+keywords = ["http", "synchronous"]
