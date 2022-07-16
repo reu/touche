@@ -23,7 +23,7 @@ fn main() -> std::io::Result<()> {
                 .status(StatusCode::OK)
                 // Disable buffering on Chrome
                 .header("X-Content-Type-Options", "nosniff")
-                .body(ResponseBody::chunked(rx.into_iter()))
+                .body(ResponseBody::chunked(rx))
         })?;
     }
 
