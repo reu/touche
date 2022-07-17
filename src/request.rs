@@ -16,7 +16,7 @@ impl Body {
 
 #[derive(Error, Debug)]
 pub enum ParseError {
-    #[error("data store disconnected")]
+    #[error("io error")]
     Io(#[from] io::Error),
     #[error("invalid request")]
     Invalid(#[from] httparse::Error),
