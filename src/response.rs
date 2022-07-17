@@ -2,7 +2,7 @@ use std::io::{self, Read, Write};
 
 use headers::{HeaderMapExt, HeaderValue};
 
-use crate::body::Body;
+use crate::body::{Body, BodyInner};
 
 enum Encoding {
     FixedLength(usize),
@@ -26,18 +26,18 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
         has_connection_close,
         has_chunked_encoding,
         content_length,
-        &body,
+        &body.0,
     ) {
-        (_, _, Some(_), Body::Empty) => {
+        (_, _, Some(_), BodyInner::Empty) => {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "content-length doesn't match body length",
             ));
         }
 
-        (_, _, None, Body::Empty) => None,
+        (_, _, None, BodyInner::Empty) => None,
 
-        (_, false, _, Body::Chunked(_)) => {
+        (_, false, _, BodyInner::Chunked(_)) => {
             headers.remove("content-length");
             headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
             Some(Encoding::Chunked)
@@ -48,14 +48,16 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
             Some(Encoding::Chunked)
         }
 
-        (_, false, Some(len), Body::Buffered(ref buf)) if buf.len() != len.0 as usize => {
+        (_, false, Some(len), BodyInner::Buffered(ref buf)) if buf.len() != len.0 as usize => {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "content-length doesn't match body length",
             ));
         }
 
-        (_, false, Some(len), Body::Reader(_, Some(body_len))) if len.0 as usize != *body_len => {
+        (_, false, Some(len), BodyInner::Reader(_, Some(body_len)))
+            if len.0 as usize != *body_len =>
+        {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "content-length doesn't match body length",
@@ -66,18 +68,18 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
 
         (true, false, None, _) => Some(Encoding::CloseDelimited),
 
-        (false, false, None, Body::Buffered(ref buf)) => {
+        (false, false, None, BodyInner::Buffered(ref buf)) => {
             let len: u64 = buf.len().try_into().unwrap();
             headers.typed_insert::<headers::ContentLength>(headers::ContentLength(len));
             Some(Encoding::FixedLength(len as usize))
         }
 
-        (false, false, None, Body::Reader(_, Some(len))) => {
+        (false, false, None, BodyInner::Reader(_, Some(len))) => {
             headers.typed_insert::<headers::ContentLength>(headers::ContentLength(*len as u64));
             Some(Encoding::FixedLength(*len))
         }
 
-        (false, false, None, Body::Reader(_, None)) => {
+        (false, false, None, BodyInner::Reader(_, None)) => {
             headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
             Some(Encoding::Chunked)
         }
@@ -94,10 +96,10 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
     stream.write_all(b"\r\n")?;
     stream.flush()?;
 
-    match body {
-        Body::Empty => {}
+    match body.0 {
+        BodyInner::Empty => {}
 
-        Body::Buffered(buf) => match encoding {
+        BodyInner::Buffered(buf) => match encoding {
             Some(Encoding::CloseDelimited) => {
                 stream.write_all(&buf)?;
             }
@@ -114,7 +116,7 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
             None => {}
         },
 
-        Body::Chunked(chunks) => {
+        BodyInner::Chunked(chunks) => {
             for chunk in chunks {
                 stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
                 stream.write_all(&chunk)?;
@@ -124,7 +126,7 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
             stream.write_all(b"0\r\n\r\n")?;
         }
 
-        Body::Reader(mut reader, _) => match encoding {
+        BodyInner::Reader(mut reader, _) => match encoding {
             Some(Encoding::CloseDelimited) => {
                 io::copy(&mut reader, stream)?;
             }
