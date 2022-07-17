@@ -89,11 +89,6 @@ pub(crate) fn parse_request(
         } else {
             Body::from_reader(stream, len.0 as usize)
         }
-    } else if let Some(true) = headers
-        .typed_try_get::<headers::Connection>()?
-        .map(|conn| conn.contains("close"))
-    {
-        Body::from_reader(stream, None)
     } else {
         Body::empty()
     };
@@ -150,16 +145,6 @@ mod test {
                 .get(http::header::HOST)
                 .and_then(|v| v.to_str().ok())
         );
-    }
-
-    #[test]
-    fn parse_request_with_close_delimited_body() {
-        let req = "POST /lol HTTP/1.1\r\nHost: lol.com\r\nConnection: close\r\n\r\nlolwut";
-        let req = std::io::Cursor::new(req);
-
-        let req = parse_request(req).unwrap();
-
-        assert_eq!(req.into_body().into_bytes().unwrap(), b"lolwut");
     }
 
     #[test]
