@@ -1,16 +1,35 @@
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Read};
 
 use headers::HeaderMapExt;
 use http::{Method, Request, Version};
 use thiserror::Error;
 
-// TODO: we should not automatically buffer the request body
-#[derive(Debug)]
-pub struct Body(Vec<u8>);
+#[derive(Default)]
+pub enum Body {
+    #[default]
+    Empty,
+    Buffered(Vec<u8>),
+    Chunked(Box<dyn Iterator<Item = Vec<u8>>>),
+    Reader(Box<dyn Read>, Option<usize>),
+}
 
 impl Body {
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
+    pub fn into_bytes(self) -> io::Result<Vec<u8>> {
+        match self {
+            Body::Empty => Ok(Vec::new()),
+            Body::Buffered(bytes) => Ok(bytes),
+            Body::Chunked(chunks) => Ok(chunks.flatten().collect()),
+            Body::Reader(mut stream, Some(len)) => {
+                let mut buf = vec![0_u8; len];
+                stream.read_exact(&mut buf)?;
+                Ok(buf)
+            }
+            Body::Reader(mut stream, None) => {
+                let mut buf = Vec::new();
+                stream.read_to_end(&mut buf)?;
+                Ok(buf)
+            }
+        }
     }
 }
 
@@ -87,47 +106,56 @@ pub(crate) fn parse_request(
             // https://datatracker.ietf.org/doc/html/rfc2616#section-3.6
             return Err(ParseError::InvalidTransferEncoding);
         }
-
-        let mut buf = Vec::new();
-        let mut body = Vec::new();
-
-        loop {
-            if stream.read_until(b'\n', &mut buf)? == 0 {
-                break;
-            }
-
-            match httparse::parse_chunk_size(&buf) {
-                Ok(httparse::Status::Complete((_pos, size))) if size == 0 => {
-                    break;
-                }
-                Ok(httparse::Status::Complete((_pos, size))) => {
-                    let mut chunk = vec![0_u8; size as usize];
-                    stream.read_exact(&mut chunk)?;
-                    stream.read_until(b'\n', &mut buf)?;
-                    body.append(&mut chunk);
-                    buf.clear();
-                }
-                Ok(httparse::Status::Partial) => continue,
-                Err(_) => return Err(ParseError::InvalidChunkSize),
-            }
-        }
-        Body(body)
+        Body::Chunked(Box::new(ChunkedReader(Box::new(stream))))
     } else if let Some(len) = headers.typed_try_get::<headers::ContentLength>()? {
-        let mut buf = vec![0_u8; len.0 as usize];
-        stream.read_exact(&mut buf)?;
-        Body(buf)
+        // Let's automatically buffer small bodies
+        if len.0 < 1024 {
+            let mut buf = vec![0_u8; len.0 as usize];
+            stream.read_exact(&mut buf)?;
+            Body::Buffered(buf)
+        } else {
+            Body::Reader(Box::new(stream), Some(len.0 as usize))
+        }
     } else if let Some(true) = headers
         .typed_try_get::<headers::Connection>()?
         .map(|conn| conn.contains("close"))
     {
-        let mut buf = Vec::new();
-        stream.read_to_end(&mut buf)?;
-        Body(buf)
+        Body::Reader(Box::new(stream), None)
     } else {
-        Body(Vec::new())
+        Body::Empty
     };
 
     request.body(body).map_err(|_| ParseError::Unknown)
+}
+
+struct ChunkedReader(Box<dyn BufRead>);
+
+impl Iterator for ChunkedReader {
+    type Item = Vec<u8>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut buf = Vec::new();
+
+        loop {
+            if self.0.read_until(b'\n', &mut buf).ok()? == 0 {
+                return None;
+            }
+
+            match httparse::parse_chunk_size(&buf) {
+                Ok(httparse::Status::Complete((_pos, size))) if size == 0 => {
+                    return None;
+                }
+                Ok(httparse::Status::Complete((_pos, size))) => {
+                    let mut chunk = vec![0_u8; size as usize];
+                    self.0.read_exact(&mut chunk).ok()?;
+                    self.0.read_until(b'\n', &mut buf).ok()?;
+                    return Some(chunk);
+                }
+                Ok(httparse::Status::Partial) => continue,
+                Err(_) => return None,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -158,7 +186,7 @@ mod test {
 
         let req = parse_request(req).unwrap();
 
-        assert_eq!(*req.into_body().as_bytes(), b"lolwut"[..]);
+        assert_eq!(req.into_body().into_bytes().unwrap(), b"lolwut");
     }
 
     #[test]
@@ -168,7 +196,7 @@ mod test {
 
         let req = parse_request(req).unwrap();
 
-        assert_eq!(*req.into_body().as_bytes(), b"lolwut"[..]);
+        assert_eq!(req.into_body().into_bytes().unwrap(), b"lolwut");
     }
 
     #[test]
@@ -178,7 +206,7 @@ mod test {
 
         let req = parse_request(req).unwrap();
 
-        assert_eq!(*req.into_body().as_bytes(), b"lolwut"[..]);
+        assert_eq!(req.into_body().into_bytes().unwrap(), b"lolwut");
     }
 
     #[test]
@@ -188,7 +216,18 @@ mod test {
 
         let req = parse_request(req).unwrap();
 
-        assert_eq!(*req.into_body().as_bytes(), b"lolwut"[..]);
+        assert_eq!(req.into_body().into_bytes().unwrap(), b"lolwut");
+    }
+
+    #[test]
+    fn parse_request_with_streaming_body() {
+        let req = b"POST /lol HTTP/1.1\r\nHost: lol.com\r\nContent-Length: 2048\r\n\r\n";
+        let body = [65_u8; 2048];
+        let req = std::io::Cursor::new([req.as_ref(), body.as_ref()].concat());
+
+        let req = parse_request(req).unwrap();
+
+        assert_eq!(req.into_body().into_bytes().unwrap(), body);
     }
 
     #[test]

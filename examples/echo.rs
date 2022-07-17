@@ -10,7 +10,7 @@ fn main() -> std::io::Result<()> {
         shrike::serve(&mut stream?, |req: Request| {
             Response::builder()
                 .status(StatusCode::OK)
-                .body(req.into_body().as_bytes().into())
+                .body(req.into_body().into_bytes().unwrap().into())
         })?;
     }
 
