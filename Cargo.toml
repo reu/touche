@@ -13,3 +13,6 @@ headers = "0.3.7"
 http = "0.2.8"
 httparse = "1.7.1"
 thiserror = "1.0.31"
+
+[dev-dependencies]
+indoc = "1.0.6"

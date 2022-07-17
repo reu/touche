@@ -1,6 +1,7 @@
 use std::{
     fs::File,
     io::{self, Read},
+    sync::mpsc::{self, SendError, Sender},
 };
 
 #[derive(Default)]
@@ -12,7 +13,17 @@ pub(crate) enum BodyInner {
     Empty,
     Buffered(Vec<u8>),
     Chunked(Box<dyn Iterator<Item = Vec<u8>>>),
+    // TODO: ww should merge Chunked and Channel variants
+    Channel(Box<dyn Iterator<Item = Vec<u8>>>),
     Reader(Box<dyn Read>, Option<usize>),
+}
+
+pub struct BodyChannel(Sender<Vec<u8>>);
+
+impl BodyChannel {
+    pub fn send<T: Into<Vec<u8>>>(&self, data: T) -> Result<(), SendError<Vec<u8>>> {
+        self.0.send(data.into())
+    }
 }
 
 impl Body {
@@ -26,6 +37,12 @@ impl Body {
         )))
     }
 
+    pub fn channel() -> (BodyChannel, Self) {
+        let (tx, rx) = mpsc::channel();
+        let body = Body(BodyInner::Channel(Box::new(rx.into_iter())));
+        (BodyChannel(tx), body)
+    }
+
     pub fn from_reader<T: Into<Option<usize>>>(reader: impl Read + 'static, length: T) -> Self {
         Body(BodyInner::Reader(Box::new(reader), length.into()))
     }
@@ -34,6 +51,7 @@ impl Body {
         match self.0 {
             BodyInner::Empty => Ok(Vec::new()),
             BodyInner::Buffered(bytes) => Ok(bytes),
+            BodyInner::Channel(chunks) => Ok(chunks.flatten().collect()),
             BodyInner::Chunked(chunks) => Ok(chunks.flatten().collect()),
             BodyInner::Reader(mut stream, Some(len)) => {
                 let mut buf = vec![0_u8; len];

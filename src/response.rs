@@ -83,6 +83,8 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
             headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
             Some(Encoding::Chunked)
         }
+
+        _ => None,
     };
 
     stream.write_all(format!("{:?} {}\r\n", parts.version, parts.status).as_bytes())?;
@@ -115,6 +117,13 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
             }
             None => {}
         },
+
+        BodyInner::Channel(chunks) => {
+            for chunk in chunks {
+                stream.write_all(&chunk)?;
+                stream.flush()?;
+            }
+        }
 
         BodyInner::Chunked(chunks) => {
             for chunk in chunks {
@@ -156,7 +165,7 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::{io::Cursor, thread};
 
     use super::*;
     use http::{Response, StatusCode};
@@ -264,6 +273,31 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(output.get_ref()).unwrap(),
             "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n6\r\nlolwut\r\n0\r\n\r\n"
+        );
+    }
+
+    #[test]
+    fn supports_channel_response_bodies() {
+        let (sender, body) = Body::channel();
+
+        let send_thread = thread::spawn(move || {
+            sender.send("lol").unwrap();
+            sender.send("wut").unwrap();
+        });
+
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .body(body)
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        write_response(res, &mut output).unwrap();
+
+        send_thread.join().unwrap();
+
+        assert_eq!(
+            std::str::from_utf8(output.get_ref()).unwrap(),
+            "HTTP/1.1 200 OK\r\n\r\nlolwut"
         );
     }
 }
