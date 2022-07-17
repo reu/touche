@@ -1,3 +1,4 @@
+pub mod body;
 pub mod request;
 pub mod response;
 
@@ -7,11 +8,10 @@ use std::{
     net::TcpStream,
 };
 
-pub use request::Body as RequestBody;
-pub use response::Body as ResponseBody;
+pub use body::Body;
 
-pub type Request = http::Request<RequestBody>;
-pub type Response = http::Response<ResponseBody>;
+pub type Request = http::Request<Body>;
+pub type Response = http::Response<Body>;
 
 pub trait Handler<Err>: Sync + Send
 where

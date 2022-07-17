@@ -1,7 +1,7 @@
 use std::{error::Error, net::TcpListener, sync::mpsc, thread, time::Duration};
 
 use http::{Response, StatusCode};
-use shrike::ResponseBody;
+use shrike::Body;
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:4444")?;
@@ -23,7 +23,7 @@ fn main() -> std::io::Result<()> {
                 .status(StatusCode::OK)
                 // Disable buffering on Chrome
                 .header("X-Content-Type-Options", "nosniff")
-                .body(ResponseBody::chunked(rx))
+                .body(Body::chunked(rx))
         })?;
     }
 

@@ -4,34 +4,7 @@ use headers::HeaderMapExt;
 use http::{Method, Request, Version};
 use thiserror::Error;
 
-#[derive(Default)]
-pub enum Body {
-    #[default]
-    Empty,
-    Buffered(Vec<u8>),
-    Chunked(Box<dyn Iterator<Item = Vec<u8>>>),
-    Reader(Box<dyn Read>, Option<usize>),
-}
-
-impl Body {
-    pub fn into_bytes(self) -> io::Result<Vec<u8>> {
-        match self {
-            Body::Empty => Ok(Vec::new()),
-            Body::Buffered(bytes) => Ok(bytes),
-            Body::Chunked(chunks) => Ok(chunks.flatten().collect()),
-            Body::Reader(mut stream, Some(len)) => {
-                let mut buf = vec![0_u8; len];
-                stream.read_exact(&mut buf)?;
-                Ok(buf)
-            }
-            Body::Reader(mut stream, None) => {
-                let mut buf = Vec::new();
-                stream.read_to_end(&mut buf)?;
-                Ok(buf)
-            }
-        }
-    }
-}
+use crate::body::Body;
 
 #[derive(Error, Debug)]
 pub enum ParseError {
@@ -106,23 +79,23 @@ pub(crate) fn parse_request(
             // https://datatracker.ietf.org/doc/html/rfc2616#section-3.6
             return Err(ParseError::InvalidTransferEncoding);
         }
-        Body::Chunked(Box::new(ChunkedReader(Box::new(stream))))
+        Body::chunked(ChunkedReader(Box::new(stream)))
     } else if let Some(len) = headers.typed_try_get::<headers::ContentLength>()? {
         // Let's automatically buffer small bodies
         if len.0 < 1024 {
             let mut buf = vec![0_u8; len.0 as usize];
             stream.read_exact(&mut buf)?;
-            Body::Buffered(buf)
+            Body::from(buf)
         } else {
-            Body::Reader(Box::new(stream), Some(len.0 as usize))
+            Body::from_reader(stream, len.0 as usize)
         }
     } else if let Some(true) = headers
         .typed_try_get::<headers::Connection>()?
         .map(|conn| conn.contains("close"))
     {
-        Body::Reader(Box::new(stream), None)
+        Body::from_reader(stream, None)
     } else {
-        Body::Empty
+        Body::empty()
     };
 
     request.body(body).map_err(|_| ParseError::Unknown)
