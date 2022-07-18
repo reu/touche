@@ -99,7 +99,6 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
     }
 
     stream.write_all(b"\r\n")?;
-    stream.flush()?;
 
     match body.0 {
         BodyInner::Empty => {}
