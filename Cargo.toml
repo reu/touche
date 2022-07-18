@@ -16,3 +16,4 @@ thiserror = "1.0.31"
 
 [dev-dependencies]
 indoc = "1.0.6"
+threadpool = "1.8.1"
