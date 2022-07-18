@@ -84,7 +84,10 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
             Some(Encoding::Chunked)
         }
 
-        _ => None,
+        (false, false, None, BodyInner::Channel(_)) => {
+            headers.insert("connection", HeaderValue::from_static("close"));
+            Some(Encoding::CloseDelimited)
+        }
     };
 
     stream.write_all(format!("{:?} {}\r\n", parts.version, parts.status).as_bytes())?;
@@ -297,7 +300,7 @@ mod tests {
 
         assert_eq!(
             std::str::from_utf8(output.get_ref()).unwrap(),
-            "HTTP/1.1 200 OK\r\n\r\nlolwut"
+            "HTTP/1.1 200 OK\r\nconnection: close\r\n\r\nlolwut"
         );
     }
 }
