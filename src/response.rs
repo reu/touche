@@ -10,7 +10,15 @@ enum Encoding {
     CloseDelimited,
 }
 
-pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write) -> io::Result<()> {
+pub(crate) enum Outcome {
+    Close,
+    KeepAlive,
+}
+
+pub(crate) fn write_response(
+    res: http::Response<Body>,
+    stream: &mut impl Write,
+) -> io::Result<Outcome> {
     let (parts, body) = res.into_parts();
 
     let mut headers = parts.headers;
@@ -162,7 +170,12 @@ pub(crate) fn write_response(res: http::Response<Body>, stream: &mut impl Write)
         },
     };
 
-    Ok(())
+    let outcome = match headers.typed_get::<headers::Connection>() {
+        Some(conn) if conn.contains("close") => Outcome::Close,
+        _ => Outcome::KeepAlive,
+    };
+
+    Ok(outcome)
 }
 
 #[cfg(test)]
@@ -301,5 +314,32 @@ mod tests {
             std::str::from_utf8(output.get_ref()).unwrap(),
             "HTTP/1.1 200 OK\r\nconnection: close\r\n\r\nlolwut"
         );
+    }
+
+    #[test]
+    fn returns_a_close_connection_outcome() {
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .header("connection", "close")
+            .body(Body::empty())
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let outcome = write_response(res, &mut output).unwrap();
+
+        assert!(matches!(outcome, Outcome::Close));
+    }
+
+    #[test]
+    fn returns_a_close_keep_alive_outcome() {
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::empty())
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let outcome = write_response(res, &mut output).unwrap();
+
+        assert!(matches!(outcome, Outcome::KeepAlive));
     }
 }

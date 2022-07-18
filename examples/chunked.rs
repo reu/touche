@@ -7,7 +7,7 @@ fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:4444")?;
 
     for stream in listener.incoming() {
-        shrike::serve(&mut stream?, |_req| {
+        shrike::serve(stream?, |_req| {
             let (tx, rx) = mpsc::channel();
 
             thread::spawn(move || {

@@ -4,11 +4,12 @@ pub mod response;
 
 use std::{
     error::Error,
-    io::{self, BufReader, BufWriter, Write},
+    io::{self, BufReader, BufWriter},
     net::TcpStream,
 };
 
 pub use body::Body;
+use response::Outcome;
 
 pub type Request = http::Request<Body>;
 pub type Response = http::Response<Body>;
@@ -31,7 +32,12 @@ where
     }
 }
 
-pub fn serve<Handle, Err>(stream: &mut TcpStream, handle: Handle) -> io::Result<()>
+pub enum Connection {
+    Close,
+    KeepAlive(TcpStream),
+}
+
+pub fn serve<Handle, Err>(stream: TcpStream, handle: Handle) -> io::Result<Connection>
 where
     Handle: Handler<Err>,
     Err: Into<Box<dyn Error + Send + Sync>>,
@@ -42,10 +48,13 @@ where
             let res = handle
                 .handle(req)
                 .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+
             let mut res_stream = BufWriter::new(stream);
-            response::write_response(res, &mut res_stream)?;
-            res_stream.flush()?;
-            Ok(())
+
+            match response::write_response(res, &mut res_stream)? {
+                Outcome::KeepAlive => Ok(Connection::KeepAlive(res_stream.into_inner()?)),
+                Outcome::Close => Ok(Connection::Close),
+            }
         }
         Err(err) => Err(io::Error::new(io::ErrorKind::Other, err)),
     }

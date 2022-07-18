@@ -8,9 +8,9 @@ fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:4444")?;
 
     for stream in listener.incoming() {
-        let mut stream = stream?;
+        let stream = stream?;
         thread::spawn(move || {
-            shrike::serve(&mut stream, |req: Request| {
+            shrike::serve(stream, |req: Request| {
                 match req
                     .uri()
                     .path()
