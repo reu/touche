@@ -1,6 +1,7 @@
 pub mod body;
 pub mod request;
 pub mod response;
+pub mod upgrade;
 
 use std::{
     error::Error,
@@ -54,6 +55,10 @@ where
             match response::write_response(res, &mut res_stream)? {
                 Outcome::KeepAlive => Ok(Connection::KeepAlive(res_stream.into_inner()?)),
                 Outcome::Close => Ok(Connection::Close),
+                Outcome::Upgrade(upgrade) => {
+                    upgrade.handler.handle(res_stream.into_inner()?);
+                    Ok(Connection::Close)
+                }
             }
         }
         Err(err) => Err(io::Error::new(io::ErrorKind::Other, err)),

@@ -2,7 +2,10 @@ use std::io::{self, Read, Write};
 
 use headers::{HeaderMapExt, HeaderValue};
 
-use crate::body::{Body, BodyInner};
+use crate::{
+    body::{Body, BodyInner},
+    upgrade::UpgradeExtension,
+};
 
 enum Encoding {
     FixedLength(usize),
@@ -13,12 +16,14 @@ enum Encoding {
 pub(crate) enum Outcome {
     Close,
     KeepAlive,
+    Upgrade(UpgradeExtension),
 }
 
 pub(crate) fn write_response(
-    res: http::Response<Body>,
+    mut res: http::Response<Body>,
     stream: &mut impl Write,
 ) -> io::Result<Outcome> {
+    let upgrade = res.extensions_mut().remove::<UpgradeExtension>();
     let (parts, body) = res.into_parts();
 
     let mut headers = parts.headers;
@@ -170,9 +175,16 @@ pub(crate) fn write_response(
         },
     };
 
-    let outcome = match headers.typed_get::<headers::Connection>() {
-        Some(conn) if conn.contains("close") => Outcome::Close,
-        _ => Outcome::KeepAlive,
+    let outcome = if let Some(upgrade) = upgrade {
+        Outcome::Upgrade(upgrade)
+    } else if headers
+        .typed_get::<headers::Connection>()
+        .filter(|conn| conn.contains("close"))
+        .is_some()
+    {
+        Outcome::Close
+    } else {
+        Outcome::KeepAlive
     };
 
     Ok(outcome)
