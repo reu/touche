@@ -5,11 +5,14 @@ pub mod upgrade;
 
 use std::{
     error::Error,
-    io::{self, BufReader, BufWriter},
+    io::{self, BufReader, BufWriter, Write},
     net::TcpStream,
 };
 
+mod read_queue;
+
 pub use body::Body;
+use read_queue::ReadQueue;
 use response::Outcome;
 
 pub type Request = http::Request<Body>;
@@ -33,34 +36,37 @@ where
     }
 }
 
-pub enum Connection {
-    Close,
-    KeepAlive(TcpStream),
-}
-
-pub fn serve<Handle, Err>(stream: TcpStream, handle: Handle) -> io::Result<Connection>
+pub fn serve<Handle, Err>(stream: TcpStream, handle: Handle) -> io::Result<()>
 where
     Handle: Handler<Err>,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
-    let req_stream = BufReader::new(stream.try_clone()?);
-    match request::parse_request(req_stream) {
-        Ok(req) => {
-            let res = handle
-                .handle(req)
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    let mut read_queue = ReadQueue::new(BufReader::new(stream.try_clone()?));
 
-            let mut res_stream = BufWriter::new(stream);
+    let mut reader = read_queue.enqueue();
+    let mut writer = BufWriter::new(stream);
 
-            match response::write_response(res, &mut res_stream)? {
-                Outcome::KeepAlive => Ok(Connection::KeepAlive(res_stream.into_inner()?)),
-                Outcome::Close => Ok(Connection::Close),
-                Outcome::Upgrade(upgrade) => {
-                    upgrade.handler.handle(res_stream.into_inner()?);
-                    Ok(Connection::Close)
+    loop {
+        match request::parse_request(reader) {
+            Ok(req) => {
+                reader = read_queue.enqueue();
+
+                let res = handle
+                    .handle(req)
+                    .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+
+                match response::write_response(res, &mut writer)? {
+                    Outcome::KeepAlive => writer.flush()?,
+                    Outcome::Close => break,
+                    Outcome::Upgrade(upgrade) => {
+                        upgrade.handler.handle(writer.into_inner()?);
+                        break;
+                    }
                 }
             }
+            Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
         }
-        Err(err) => Err(io::Error::new(io::ErrorKind::Other, err)),
     }
+
+    Ok(())
 }

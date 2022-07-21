@@ -24,7 +24,7 @@ pub(crate) fn write_response(
     stream: &mut impl Write,
 ) -> io::Result<Outcome> {
     let upgrade = res.extensions_mut().remove::<UpgradeExtension>();
-    let (parts, body) = res.into_parts();
+    let (parts, mut body) = res.into_parts();
 
     let mut headers = parts.headers;
 
@@ -41,16 +41,16 @@ pub(crate) fn write_response(
         content_length,
         &body.0,
     ) {
-        (_, _, Some(_), BodyInner::Empty) => {
+        (_, _, Some(_), Some(BodyInner::Empty)) => {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "content-length doesn't match body length",
             ));
         }
 
-        (_, _, None, BodyInner::Empty) => None,
+        (_, _, None, Some(BodyInner::Empty)) => None,
 
-        (_, false, _, BodyInner::Chunked(_)) => {
+        (_, false, _, Some(BodyInner::Chunked(_))) => {
             headers.remove("content-length");
             headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
             Some(Encoding::Chunked)
@@ -61,14 +61,14 @@ pub(crate) fn write_response(
             Some(Encoding::Chunked)
         }
 
-        (_, false, Some(len), BodyInner::Buffered(ref buf)) if buf.len() != len.0 as usize => {
+        (_, false, Some(len), Some(BodyInner::Buffered(ref buf))) if buf.len() != len.0 as usize => {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "content-length doesn't match body length",
             ));
         }
 
-        (_, false, Some(len), BodyInner::Reader(_, Some(body_len)))
+        (_, false, Some(len), Some(BodyInner::Reader(_, Some(body_len))))
             if len.0 as usize != *body_len =>
         {
             return Err(io::Error::new(
@@ -81,26 +81,28 @@ pub(crate) fn write_response(
 
         (true, false, None, _) => Some(Encoding::CloseDelimited),
 
-        (false, false, None, BodyInner::Buffered(ref buf)) => {
+        (false, false, None, Some(BodyInner::Buffered(ref buf))) => {
             let len: u64 = buf.len().try_into().unwrap();
             headers.typed_insert::<headers::ContentLength>(headers::ContentLength(len));
             Some(Encoding::FixedLength(len as usize))
         }
 
-        (false, false, None, BodyInner::Reader(_, Some(len))) => {
+        (false, false, None, Some(BodyInner::Reader(_, Some(len)))) => {
             headers.typed_insert::<headers::ContentLength>(headers::ContentLength(*len as u64));
             Some(Encoding::FixedLength(*len))
         }
 
-        (false, false, None, BodyInner::Reader(_, None)) => {
+        (false, false, None, Some(BodyInner::Reader(_, None))) => {
             headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
             Some(Encoding::Chunked)
         }
 
-        (false, false, None, BodyInner::Channel(_)) => {
+        (false, false, None, Some(BodyInner::Channel(_))) => {
             headers.insert("connection", HeaderValue::from_static("close"));
             Some(Encoding::CloseDelimited)
         }
+
+        (false, false, None, None) => None,
     };
 
     stream.write_all(format!("{:?} {}\r\n", parts.version, parts.status).as_bytes())?;
@@ -113,7 +115,7 @@ pub(crate) fn write_response(
 
     stream.write_all(b"\r\n")?;
 
-    match body.0 {
+    match body.0.take().unwrap() {
         BodyInner::Empty => {}
 
         BodyInner::Buffered(buf) => match encoding {

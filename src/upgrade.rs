@@ -4,11 +4,7 @@ pub trait UpgradeHandler: Sync + Send {
     fn handle(&self, stream: TcpStream);
 }
 
-impl<F> UpgradeHandler for F
-where
-    F: Fn(TcpStream),
-    F: Sync + Send,
-{
+impl<F: Fn(TcpStream) + Sync + Send> UpgradeHandler for F {
     fn handle(&self, stream: TcpStream) {
         self(stream)
     }

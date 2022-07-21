@@ -5,7 +5,7 @@ use std::{
 };
 
 #[derive(Default)]
-pub struct Body(pub(crate) BodyInner);
+pub struct Body(pub(crate) Option<BodyInner>);
 
 #[derive(Default)]
 pub(crate) enum BodyInner {
@@ -28,27 +28,27 @@ impl BodyChannel {
 
 impl Body {
     pub fn empty() -> Self {
-        Body(BodyInner::Empty)
+        Body(Some(BodyInner::Empty))
     }
 
     pub fn chunked<T: Into<Vec<u8>>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
-        Body(BodyInner::Chunked(Box::new(
+        Body(Some(BodyInner::Chunked(Box::new(
             chunks.into_iter().map(|chunk| chunk.into()),
-        )))
+        ))))
     }
 
     pub fn channel() -> (BodyChannel, Self) {
         let (tx, rx) = mpsc::channel();
-        let body = Body(BodyInner::Channel(Box::new(rx.into_iter())));
+        let body = Body(Some(BodyInner::Channel(Box::new(rx.into_iter()))));
         (BodyChannel(tx), body)
     }
 
     pub fn from_reader<T: Into<Option<usize>>>(reader: impl Read + 'static, length: T) -> Self {
-        Body(BodyInner::Reader(Box::new(reader), length.into()))
+        Body(Some(BodyInner::Reader(Box::new(reader), length.into())))
     }
 
-    pub fn into_bytes(self) -> io::Result<Vec<u8>> {
-        match self.0 {
+    pub fn into_bytes(mut self) -> io::Result<Vec<u8>> {
+        match self.0.take().unwrap() {
             BodyInner::Empty => Ok(Vec::new()),
             BodyInner::Buffered(bytes) => Ok(bytes),
             BodyInner::Channel(chunks) => Ok(chunks.flatten().collect()),
@@ -67,9 +67,26 @@ impl Body {
     }
 }
 
+impl Drop for Body {
+    fn drop(&mut self) {
+        #[allow(unused_must_use)]
+        match self.0.take() {
+            Some(BodyInner::Reader(ref mut stream, Some(len))) => {
+                let mut buf = vec![0_u8; len as usize];
+                stream.read_exact(&mut buf);
+            }
+            Some(BodyInner::Reader(ref mut stream, None)) => {
+                let mut buf = Vec::new();
+                stream.read_to_end(&mut buf);
+            }
+            _ => {}
+        }
+    }
+}
+
 impl From<Vec<u8>> for Body {
     fn from(body: Vec<u8>) -> Self {
-        Body(BodyInner::Buffered(body))
+        Body(Some(BodyInner::Buffered(body)))
     }
 }
 
