@@ -7,7 +7,7 @@ use crate::{body::Body, upgrade::UpgradeExtension};
 
 #[derive(PartialEq, Eq)]
 enum Encoding {
-    FixedLength,
+    FixedLength(u64),
     Chunked,
     CloseDelimited,
 }
@@ -56,14 +56,14 @@ pub(crate) fn write_response(
                         "content-length doesn't match body length",
                     ));
                 }
-                Encoding::FixedLength
+                Encoding::FixedLength(len.0)
             }
-            (Some(_), None) => Encoding::FixedLength,
+            (Some(len), None) => Encoding::FixedLength(len.0),
             (None, Some(len)) => {
                 if len > 0 {
                     headers.typed_insert::<headers::ContentLength>(headers::ContentLength(len));
                 }
-                Encoding::FixedLength
+                Encoding::FixedLength(len)
             }
             (None, None) => unreachable!(),
         }
@@ -86,15 +86,11 @@ pub(crate) fn write_response(
     stream.write_all(b"\r\n")?;
 
     match encoding {
-        Encoding::FixedLength => match body.len() {
-            Some(len) if len < 1024 => {
-                stream.write_all(&body.into_bytes()?)?;
-            }
-            _ => {
-                io::copy(&mut body.into_reader(), stream)?;
-            }
-        },
-        Encoding::CloseDelimited => {
+        // Just buffer small bodies
+        Encoding::FixedLength(len) if len < 1024 => {
+            stream.write_all(&body.into_bytes()?)?;
+        }
+        Encoding::FixedLength(_) | Encoding::CloseDelimited => {
             io::copy(&mut body.into_reader(), stream)?;
         }
         Encoding::Chunked => {
@@ -140,9 +136,10 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output).unwrap();
 
         assert_eq!(output.get_ref(), b"HTTP/1.1 200 OK\r\nsome: header\r\n\r\n");
+        assert!(matches!(outcome, Outcome::KeepAlive));
     }
 
     #[test]
@@ -153,12 +150,13 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output).unwrap();
 
         assert_eq!(
             output.get_ref(),
             b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nlol"
         );
+        assert!(matches!(outcome, Outcome::KeepAlive));
     }
 
     #[test]
@@ -178,16 +176,20 @@ mod tests {
         let res = Response::builder()
             .status(StatusCode::OK)
             .header("transfer-encoding", "chunked")
-            .body(Body::from_iter(vec![b"chunk1".to_vec(), b"chunk2".to_vec()]))
+            .body(Body::from_iter(vec![
+                b"chunk1".to_vec(),
+                b"chunk2".to_vec(),
+            ]))
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output).unwrap();
 
         assert_eq!(
             output.get_ref(),
             b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n6\r\nchunk1\r\n6\r\nchunk2\r\n0\r\n\r\n"
         );
+        assert!(matches!(outcome, Outcome::KeepAlive));
     }
 
     #[test]
@@ -198,12 +200,13 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output).unwrap();
 
         assert_eq!(
             output.get_ref(),
             b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nlol"
         );
+        assert!(matches!(outcome, Outcome::KeepAlive));
     }
 
     #[test]
@@ -214,12 +217,13 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output).unwrap();
 
         assert_eq!(
             output.get_ref(),
             b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nlol"
         );
+        assert!(matches!(outcome, Outcome::KeepAlive));
     }
 
     #[test]
@@ -230,12 +234,13 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output).unwrap();
 
         assert_eq!(
-            std::str::from_utf8(output.get_ref()).unwrap(),
-            "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n6\r\nlolwut\r\n0\r\n\r\n"
+            output.get_ref(),
+            b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n6\r\nlolwut\r\n0\r\n\r\n"
         );
+        assert!(matches!(outcome, Outcome::KeepAlive));
     }
 
     #[test]
@@ -247,12 +252,13 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output).unwrap();
 
         assert_eq!(
-            std::str::from_utf8(output.get_ref()).unwrap(),
-            "HTTP/1.1 200 OK\r\nconnection: close\r\n\r\nlolwut"
+            output.get_ref(),
+            b"HTTP/1.1 200 OK\r\nconnection: close\r\n\r\nlolwut"
         );
+        assert!(matches!(outcome, Outcome::Close));
     }
 
     #[test]
@@ -271,7 +277,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output).unwrap();
 
         send_thread.join().unwrap();
 
@@ -279,10 +285,11 @@ mod tests {
             std::str::from_utf8(output.get_ref()).unwrap(),
             "HTTP/1.1 200 OK\r\nconnection: close\r\n\r\nlolwut"
         );
+        assert!(matches!(outcome, Outcome::Close));
     }
 
     #[test]
-    fn returns_a_close_connection_outcome() {
+    fn returns_a_close_connection_outcome_when_informed_an_explicit_close_connection_header() {
         let res = Response::builder()
             .status(StatusCode::OK)
             .header("connection", "close")
@@ -296,7 +303,7 @@ mod tests {
     }
 
     #[test]
-    fn returns_a_close_keep_alive_outcome() {
+    fn returns_a_close_keep_alive_outcome_when_no_close_connection_is_informed() {
         let res = Response::builder()
             .status(StatusCode::OK)
             .body(Body::empty())
