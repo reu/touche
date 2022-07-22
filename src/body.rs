@@ -218,9 +218,15 @@ impl Iterator for BodyChunkIterator {
                 Some(buf)
             }
             BodyChunkIterInner::Reader(mut reader, None) => {
-                let mut buf = Vec::new();
-                reader.read_to_end(&mut buf).ok()?;
-                Some(buf)
+                let mut buf = vec![0_u8; 8 * 1024];
+                match reader.read(&mut buf).ok()? {
+                    0 => None,
+                    bytes => {
+                        self.0 = Some(BodyChunkIterInner::Reader(reader, None));
+                        buf.resize(bytes, 0);
+                        Some(buf)
+                    }
+                }
             }
         }
     }
