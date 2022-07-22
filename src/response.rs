@@ -124,6 +124,8 @@ pub(crate) fn write_response(
 mod tests {
     use std::{io::Cursor, thread};
 
+    use crate::upgrade::Upgrade;
+
     use super::*;
     use http::{Response, StatusCode};
 
@@ -313,5 +315,19 @@ mod tests {
         let outcome = write_response(res, &mut output).unwrap();
 
         assert!(matches!(outcome, Outcome::KeepAlive));
+    }
+
+    #[test]
+    fn returns_upgrade_outcome() {
+        let res = Response::builder()
+            .status(StatusCode::SWITCHING_PROTOCOLS)
+            .upgrade(|_| {})
+            .body(Body::empty())
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let outcome = write_response(res, &mut output).unwrap();
+
+        assert!(matches!(outcome, Outcome::Upgrade(_)));
     }
 }
