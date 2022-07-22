@@ -1,14 +1,13 @@
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 
-use headers::{HeaderMapExt, HeaderValue};
+use headers::HeaderMapExt;
+use http::response::Parts;
 
-use crate::{
-    body::{Body, BodyInner},
-    upgrade::UpgradeExtension,
-};
+use crate::{body::Body, upgrade::UpgradeExtension};
 
+#[derive(PartialEq, Eq)]
 enum Encoding {
-    FixedLength(usize),
+    FixedLength,
     Chunked,
     CloseDelimited,
 }
@@ -20,130 +19,86 @@ pub(crate) enum Outcome {
 }
 
 pub(crate) fn write_response(
-    mut res: http::Response<Body>,
+    res: http::Response<Body>,
     stream: &mut impl Write,
 ) -> io::Result<Outcome> {
-    let upgrade = res.extensions_mut().remove::<UpgradeExtension>();
-    let (parts, mut body) = res.into_parts();
+    let (
+        Parts {
+            status,
+            version,
+            mut headers,
+            mut extensions,
+            ..
+        },
+        body,
+    ) = res.into_parts();
 
-    let mut headers = parts.headers;
+    let has_chunked_encoding = headers
+        .typed_get::<headers::TransferEncoding>()
+        .filter(|te| te.is_chunked())
+        .is_some();
 
-    let te = headers.typed_get::<headers::TransferEncoding>();
-    let connection = headers.typed_get::<headers::Connection>();
+    let has_connection_close = headers
+        .typed_get::<headers::Connection>()
+        .filter(|conn| conn.contains("close"))
+        .is_some();
 
-    let has_connection_close = connection.map(|conn| conn.contains("close")) == Some(true);
-    let has_chunked_encoding = te.map(|te| te.is_chunked()) == Some(true);
     let content_length = headers.typed_get::<headers::ContentLength>();
 
-    let encoding = match (
-        has_connection_close,
-        has_chunked_encoding,
-        content_length,
-        &body.0,
-    ) {
-        (_, _, Some(_), Some(BodyInner::Empty)) => {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "content-length doesn't match body length",
-            ));
+    let encoding = if has_chunked_encoding {
+        Encoding::Chunked
+    } else if content_length.is_some() || body.len().is_some() {
+        match (content_length, body.len()) {
+            (Some(len), Some(body_len)) => {
+                if len.0 != body_len {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "content-length doesn't match body length",
+                    ));
+                }
+                Encoding::FixedLength
+            }
+            (Some(_), None) => Encoding::FixedLength,
+            (None, Some(len)) => {
+                if len > 0 {
+                    headers.typed_insert::<headers::ContentLength>(headers::ContentLength(len));
+                }
+                Encoding::FixedLength
+            }
+            (None, None) => unreachable!(),
         }
-
-        (_, _, None, Some(BodyInner::Empty)) => None,
-
-        (_, false, _, Some(BodyInner::Chunked(_))) => {
-            headers.remove("content-length");
-            headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
-            Some(Encoding::Chunked)
+    } else if body.len().is_none() && !has_connection_close {
+        headers.typed_insert::<headers::TransferEncoding>(headers::TransferEncoding::chunked());
+        Encoding::Chunked
+    } else {
+        if !has_connection_close {
+            headers.typed_insert::<headers::Connection>(headers::Connection::close());
         }
-
-        (_, true, _, _) => {
-            headers.remove("content-length");
-            Some(Encoding::Chunked)
-        }
-
-        (_, false, Some(len), Some(BodyInner::Buffered(ref buf))) if buf.len() != len.0 as usize => {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "content-length doesn't match body length",
-            ));
-        }
-
-        (_, false, Some(len), Some(BodyInner::Reader(_, Some(body_len))))
-            if len.0 as usize != *body_len =>
-        {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "content-length doesn't match body length",
-            ));
-        }
-
-        (_, false, Some(len), _) => Some(Encoding::FixedLength(len.0 as usize)),
-
-        (true, false, None, _) => Some(Encoding::CloseDelimited),
-
-        (false, false, None, Some(BodyInner::Buffered(ref buf))) => {
-            let len: u64 = buf.len().try_into().unwrap();
-            headers.typed_insert::<headers::ContentLength>(headers::ContentLength(len));
-            Some(Encoding::FixedLength(len as usize))
-        }
-
-        (false, false, None, Some(BodyInner::Reader(_, Some(len)))) => {
-            headers.typed_insert::<headers::ContentLength>(headers::ContentLength(*len as u64));
-            Some(Encoding::FixedLength(*len))
-        }
-
-        (false, false, None, Some(BodyInner::Reader(_, None))) => {
-            headers.insert("transfer-encoding", HeaderValue::from_static("chunked"));
-            Some(Encoding::Chunked)
-        }
-
-        (false, false, None, Some(BodyInner::Channel(_))) => {
-            headers.insert("connection", HeaderValue::from_static("close"));
-            Some(Encoding::CloseDelimited)
-        }
-
-        (false, false, None, None) => None,
+        Encoding::CloseDelimited
     };
 
-    stream.write_all(format!("{:?} {}\r\n", parts.version, parts.status).as_bytes())?;
+    stream.write_all(format!("{version:?} {status}\r\n").as_bytes())?;
 
     for (name, val) in headers.iter() {
-        stream.write_all(format!("{name}: ").as_bytes())?;
-        stream.write_all(val.as_bytes())?;
-        stream.write_all(b"\r\n")?;
+        stream.write_all(&[format!("{name}: ").as_bytes(), val.as_bytes(), b"\r\n"].concat())?;
     }
 
     stream.write_all(b"\r\n")?;
 
-    match body.0.take().unwrap() {
-        BodyInner::Empty => {}
-
-        BodyInner::Buffered(buf) => match encoding {
-            Some(Encoding::CloseDelimited) => {
-                stream.write_all(&buf)?;
+    match encoding {
+        Encoding::FixedLength => match body.len() {
+            Some(len) if len < 1024 => {
+                stream.write_all(&body.into_bytes()?)?;
             }
-            Some(Encoding::FixedLength(len)) => {
-                stream.write_all(&buf[0..len as usize])?;
+            _ => {
+                io::copy(&mut body.into_reader(), stream)?;
             }
-            Some(Encoding::Chunked) => {
-                // TODO: Should we automatically split the responses into chunks here?
-                stream.write_all(format!("{:x}\r\n", buf.len()).as_bytes())?;
-                stream.write_all(&buf)?;
-                stream.write_all(b"\r\n")?;
-                stream.write_all(b"0\r\n\r\n")?;
-            }
-            None => {}
         },
-
-        BodyInner::Channel(chunks) => {
-            for chunk in chunks {
-                stream.write_all(&chunk)?;
-                stream.flush()?;
-            }
+        Encoding::CloseDelimited => {
+            io::copy(&mut body.into_reader(), stream)?;
         }
-
-        BodyInner::Chunked(chunks) => {
-            for chunk in chunks {
+        Encoding::Chunked => {
+            for chunk in body.into_iter() {
                 stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
                 stream.write_all(&chunk)?;
                 stream.write_all(b"\r\n")?;
@@ -151,38 +106,15 @@ pub(crate) fn write_response(
             }
             stream.write_all(b"0\r\n\r\n")?;
         }
-
-        BodyInner::Reader(mut reader, _) => match encoding {
-            Some(Encoding::CloseDelimited) => {
-                io::copy(&mut reader, stream)?;
-            }
-            Some(Encoding::FixedLength(len)) => {
-                io::copy(&mut reader.take(len as u64), stream)?;
-            }
-            Some(Encoding::Chunked) => {
-                let mut buf = [0_u8; 1024 * 8];
-                loop {
-                    let read = reader.read(&mut buf)?;
-                    if read == 0 {
-                        break;
-                    }
-                    stream.write_all(format!("{:x}\r\n", read).as_bytes())?;
-                    stream.write_all(&buf[0..read])?;
-                    stream.write_all(b"\r\n")?;
-                    stream.flush()?;
-                }
-                stream.write_all(b"0\r\n\r\n")?;
-            }
-            None => {}
-        },
     };
 
-    let outcome = if let Some(upgrade) = upgrade {
+    let outcome = if let Some(upgrade) = extensions.remove::<UpgradeExtension>() {
         Outcome::Upgrade(upgrade)
-    } else if headers
-        .typed_get::<headers::Connection>()
-        .filter(|conn| conn.contains("close"))
-        .is_some()
+    } else if encoding == Encoding::CloseDelimited
+        || headers
+            .typed_get::<headers::Connection>()
+            .filter(|conn| conn.contains("close"))
+            .is_some()
     {
         Outcome::Close
     } else {
@@ -245,6 +177,7 @@ mod tests {
     fn writes_chunked_responses() {
         let res = Response::builder()
             .status(StatusCode::OK)
+            .header("transfer-encoding", "chunked")
             .body(Body::chunked(vec![b"chunk1".to_vec(), b"chunk2".to_vec()]))
             .unwrap();
 
@@ -258,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_responses_from_reader() {
+    fn writes_responses_from_reader_with_known_size() {
         let res = Response::builder()
             .status(StatusCode::OK)
             .body(Body::from_reader(Cursor::new(b"lol"), Some(3)))
@@ -306,6 +239,23 @@ mod tests {
     }
 
     #[test]
+    fn does_not_use_chunked_encoding_when_the_reader_size_is_undefined_and_connection_is_close() {
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .header("connection", "close")
+            .body(Body::from_reader(Cursor::new(b"lolwut"), None))
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        write_response(res, &mut output).unwrap();
+
+        assert_eq!(
+            std::str::from_utf8(output.get_ref()).unwrap(),
+            "HTTP/1.1 200 OK\r\nconnection: close\r\n\r\nlolwut"
+        );
+    }
+
+    #[test]
     fn supports_channel_response_bodies() {
         let (sender, body) = Body::channel();
 
@@ -316,6 +266,7 @@ mod tests {
 
         let res = Response::builder()
             .status(StatusCode::OK)
+            .header("connection", "close")
             .body(body)
             .unwrap();
 
