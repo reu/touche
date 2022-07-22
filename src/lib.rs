@@ -12,6 +12,8 @@ use std::{
 mod read_queue;
 
 pub use body::Body;
+use headers::{Connection, HeaderMapExt};
+use http::Version;
 use read_queue::ReadQueue;
 use response::Outcome;
 
@@ -51,11 +53,20 @@ where
             Ok(req) => {
                 reader = read_queue.enqueue();
 
+                let asks_for_close = req
+                    .headers()
+                    .typed_get::<Connection>()
+                    .filter(|conn| conn.contains("close"))
+                    .is_some();
+
+                let demands_close = asks_for_close || req.version() == Version::HTTP_10;
+
                 let res = handle
                     .handle(req)
                     .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
 
                 match response::write_response(res, &mut writer)? {
+                    Outcome::KeepAlive if demands_close => break,
                     Outcome::KeepAlive => writer.flush()?,
                     Outcome::Close => break,
                     Outcome::Upgrade(upgrade) => {
