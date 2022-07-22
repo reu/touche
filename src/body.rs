@@ -29,16 +29,17 @@ impl Body {
         Body(Some(BodyInner::Empty))
     }
 
-    pub fn chunked<T: Into<Vec<u8>>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
-        Body(Some(BodyInner::Iter(Box::new(
-            chunks.into_iter().map(|chunk| chunk.into()),
-        ))))
-    }
-
     pub fn channel() -> (BodyChannel, Self) {
         let (tx, rx) = mpsc::channel();
         let body = Body(Some(BodyInner::Iter(Box::new(rx.into_iter()))));
         (BodyChannel(tx), body)
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_iter<T: Into<Vec<u8>>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
+        Body(Some(BodyInner::Iter(Box::new(
+            chunks.into_iter().map(|chunk| chunk.into()),
+        ))))
     }
 
     pub fn from_reader<T: Into<Option<usize>>>(reader: impl Read + 'static, length: T) -> Self {
@@ -91,80 +92,20 @@ impl Body {
     }
 }
 
-pub struct BodyChunkIter(Option<BodyChunkIterInner>);
-
-enum BodyChunkIterInner {
-    Single(Vec<u8>),
-    Iter(Box<dyn Iterator<Item = Vec<u8>>>),
-    Reader(Box<dyn Read>, Option<usize>),
-}
-
-impl Iterator for BodyChunkIter {
-    type Item = Vec<u8>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.0.take()? {
-            BodyChunkIterInner::Single(bytes) => Some(bytes),
-            BodyChunkIterInner::Iter(mut iter) => {
-                let item = iter.next()?;
-                self.0 = Some(BodyChunkIterInner::Iter(iter));
-                Some(item)
-            }
-            BodyChunkIterInner::Reader(mut reader, Some(len)) => {
-                let mut buf = vec![0_u8; len];
-                reader.read_exact(&mut buf).ok()?;
-                Some(buf)
-            }
-            BodyChunkIterInner::Reader(mut reader, None) => {
-                let mut buf = Vec::new();
-                reader.read_to_end(&mut buf).ok()?;
-                Some(buf)
-            }
-        }
-    }
-}
-
 impl IntoIterator for Body {
     type Item = Vec<u8>;
 
-    type IntoIter = BodyChunkIter;
+    type IntoIter = BodyChunkIterator;
 
     fn into_iter(mut self) -> Self::IntoIter {
         match self.0.take().unwrap() {
-            BodyInner::Empty => BodyChunkIter(None),
-            BodyInner::Buffered(bytes) => BodyChunkIter(Some(BodyChunkIterInner::Single(bytes))),
-            BodyInner::Iter(chunks) => BodyChunkIter(Some(BodyChunkIterInner::Iter(chunks))),
-            BodyInner::Reader(reader, len) => {
-                BodyChunkIter(Some(BodyChunkIterInner::Reader(reader, len)))
+            BodyInner::Empty => BodyChunkIterator(None),
+            BodyInner::Buffered(bytes) => {
+                BodyChunkIterator(Some(BodyChunkIterInner::Single(bytes)))
             }
-        }
-    }
-}
-
-pub struct BodyReader(BodyReaderInner);
-
-enum BodyReaderInner {
-    Buffered(Cursor<Vec<u8>>),
-    Iter(Box<dyn Iterator<Item = Vec<u8>>>, Option<Cursor<Vec<u8>>>),
-    Reader(Box<dyn Read>),
-}
-
-impl Read for BodyReader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self.0 {
-            BodyReaderInner::Buffered(ref mut cursor) => cursor.read(buf),
-            BodyReaderInner::Reader(ref mut reader) => reader.read(buf),
-
-            // TODO: support for non partial reads here
-            BodyReaderInner::Iter(ref mut iter, ref mut leftover) => {
-                while let Some(ref mut cursor) = leftover {
-                    let read = cursor.read(buf)?;
-                    if read > 0 {
-                        return Ok(read);
-                    }
-                    *leftover = iter.next().map(Cursor::new);
-                }
-                Ok(0)
+            BodyInner::Iter(chunks) => BodyChunkIterator(Some(BodyChunkIterInner::Iter(chunks))),
+            BodyInner::Reader(reader, len) => {
+                BodyChunkIterator(Some(BodyChunkIterInner::Reader(reader, len)))
             }
         }
     }
@@ -223,6 +164,68 @@ impl TryFrom<File> for Body {
     }
 }
 
+pub struct BodyReader(BodyReaderInner);
+
+enum BodyReaderInner {
+    Buffered(Cursor<Vec<u8>>),
+    Iter(Box<dyn Iterator<Item = Vec<u8>>>, Option<Cursor<Vec<u8>>>),
+    Reader(Box<dyn Read>),
+}
+
+impl Read for BodyReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self.0 {
+            BodyReaderInner::Buffered(ref mut cursor) => cursor.read(buf),
+            BodyReaderInner::Reader(ref mut reader) => reader.read(buf),
+
+            // TODO: support for non partial reads here
+            BodyReaderInner::Iter(ref mut iter, ref mut leftover) => {
+                while let Some(ref mut cursor) = leftover {
+                    let read = cursor.read(buf)?;
+                    if read > 0 {
+                        return Ok(read);
+                    }
+                    *leftover = iter.next().map(Cursor::new);
+                }
+                Ok(0)
+            }
+        }
+    }
+}
+
+pub struct BodyChunkIterator(Option<BodyChunkIterInner>);
+
+enum BodyChunkIterInner {
+    Single(Vec<u8>),
+    Iter(Box<dyn Iterator<Item = Vec<u8>>>),
+    Reader(Box<dyn Read>, Option<usize>),
+}
+
+impl Iterator for BodyChunkIterator {
+    type Item = Vec<u8>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.take()? {
+            BodyChunkIterInner::Single(bytes) => Some(bytes),
+            BodyChunkIterInner::Iter(mut iter) => {
+                let item = iter.next()?;
+                self.0 = Some(BodyChunkIterInner::Iter(iter));
+                Some(item)
+            }
+            BodyChunkIterInner::Reader(mut reader, Some(len)) => {
+                let mut buf = vec![0_u8; len];
+                reader.read_exact(&mut buf).ok()?;
+                Some(buf)
+            }
+            BodyChunkIterInner::Reader(mut reader, None) => {
+                let mut buf = Vec::new();
+                reader.read_to_end(&mut buf).ok()?;
+                Some(buf)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{Cursor, Read};
@@ -249,7 +252,7 @@ mod tests {
 
     #[test]
     fn test_body_reader_chunked() {
-        let body = Body::chunked([vec![1, 2, 3], vec![4, 5, 6], vec![7], vec![8, 9], vec![10]]);
+        let body = Body::from_iter([vec![1, 2, 3], vec![4, 5, 6], vec![7], vec![8, 9], vec![10]]);
         let mut reader = body.into_reader();
 
         let mut buf = [0_u8; 4];

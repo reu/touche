@@ -79,7 +79,7 @@ pub(crate) fn parse_request(
             // https://datatracker.ietf.org/doc/html/rfc2616#section-3.6
             return Err(ParseError::InvalidTransferEncoding);
         }
-        Body::chunked(ChunkedReader(Box::new(stream)))
+        Body::from_iter(ChunkedReader(Box::new(stream)))
     } else if let Some(len) = headers.typed_try_get::<headers::ContentLength>()? {
         // Let's automatically buffer small bodies
         if len.0 < 1024 {

@@ -178,7 +178,7 @@ mod tests {
         let res = Response::builder()
             .status(StatusCode::OK)
             .header("transfer-encoding", "chunked")
-            .body(Body::chunked(vec![b"chunk1".to_vec(), b"chunk2".to_vec()]))
+            .body(Body::from_iter(vec![b"chunk1".to_vec(), b"chunk2".to_vec()]))
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
