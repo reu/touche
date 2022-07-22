@@ -21,7 +21,7 @@ fn main() -> std::io::Result<()> {
                     .status(StatusCode::OK)
                     .body("Hello, world!".into())
             })
-            .unwrap()
+            .ok();
         });
     }
 
