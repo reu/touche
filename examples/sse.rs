@@ -23,41 +23,7 @@ fn main() -> std::io::Result<()> {
                     [] => Response::builder()
                         .status(StatusCode::OK)
                         .header("content-type", "text/html")
-                        .body(
-                            indoc! {r#"
-                            <html>
-                              <head>
-                                <script>
-                                  const evtSource = new EventSource("/sse");
-
-                                  const messages = document.createElement("ul");
-
-                                  evtSource.addEventListener("userconnect", evt => {
-                                    const { name } = JSON.parse(evt.data);
-                                    messages.insertAdjacentHTML("beforeend", `<li>User ${name} connected`);
-                                  });
-
-                                  evtSource.addEventListener("usermessage", evt => {
-                                    const { name, message } = JSON.parse(evt.data);
-                                    messages.insertAdjacentHTML("beforeend", `<li>${name}: ${message}`);
-                                  });
-
-                                  evtSource.addEventListener("userdisconnect", evt => {
-                                    const { name } = JSON.parse(evt.data);
-                                    messages.insertAdjacentHTML("beforeend", `<li>User ${name} disconnected`);
-                                  });
-
-                                  document.addEventListener("DOMContentLoaded", () => {
-                                    document.body.appendChild(messages);
-                                  });
-                                </script>
-                              </head>
-
-                              <body></body>
-                            </html>
-                        "#}
-                            .into(),
-                        ),
+                        .body(include_str!("sse.html").into()),
 
                     ["sse"] => {
                         let (sender, body) = Body::channel();

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      const evtSource = new EventSource("/sse");
+
+      const messages = document.createElement("ul");
+
+      evtSource.addEventListener("userconnect", evt => {
+        const { name } = JSON.parse(evt.data);
+        messages.insertAdjacentHTML("beforeend", `<li>User ${name} connected`);
+      });
+
+      evtSource.addEventListener("usermessage", evt => {
+        const { name, message } = JSON.parse(evt.data);
+        messages.insertAdjacentHTML("beforeend", `<li>${name}: ${message}`);
+      });
+
+      evtSource.addEventListener("userdisconnect", evt => {
+        const { name } = JSON.parse(evt.data);
+        messages.insertAdjacentHTML("beforeend", `<li>User ${name} disconnected`);
+      });
+
+      document.addEventListener("DOMContentLoaded", () => {
+        document.body.appendChild(messages);
+      });
+    </script>
+  </head>
+
+  <body></body>
+</html>
