@@ -1,6 +1,6 @@
 use std::{error::Error, net::TcpListener, thread, time::Duration};
 
-use http::{Response, StatusCode};
+use http::{header::ACCEPT, Response, StatusCode};
 use indoc::indoc;
 use shrike::{Body, Request};
 
@@ -9,23 +9,10 @@ fn main() -> std::io::Result<()> {
 
     for stream in listener.incoming() {
         let stream = stream?;
-        thread::spawn(move || {
+        thread::spawn(|| {
             shrike::serve(stream, |req: Request| {
-                match req
-                    .uri()
-                    .path()
-                    .split("/")
-                    .skip(1)
-                    .filter(|seg| !seg.is_empty())
-                    .collect::<Vec<&str>>()
-                    .as_slice()
-                {
-                    [] => Response::builder()
-                        .status(StatusCode::OK)
-                        .header("content-type", "text/html")
-                        .body(include_str!("sse.html").into()),
-
-                    ["sse"] => {
+                match req.headers().get(ACCEPT).and_then(|a| a.to_str().ok()) {
+                    Some(accept) if accept.contains("text/event-stream") => {
                         let (sender, body) = Body::channel();
 
                         thread::spawn(move || {
@@ -61,8 +48,9 @@ fn main() -> std::io::Result<()> {
                     }
 
                     _ => Response::builder()
-                        .status(StatusCode::NOT_FOUND)
-                        .body(Body::empty()),
+                        .status(StatusCode::OK)
+                        .header("content-type", "text/html")
+                        .body(include_str!("sse.html").into()),
                 }
             })
         });
