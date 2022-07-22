@@ -51,7 +51,10 @@ pub(crate) fn parse_request(
     let mut req = httparse::Request::new(&mut headers);
     req.parse(&buf)?;
 
-    let method = req.method.map(|method| method.as_bytes()).unwrap();
+    let method = req
+        .method
+        .map(|method| method.as_bytes())
+        .ok_or(ParseError::IncompleteRequest)?;
 
     let path = req.path.ok_or(ParseError::IncompleteRequest)?;
 
