@@ -19,7 +19,7 @@ fn main() -> std::io::Result<()> {
             shrike::serve(stream, |_req| {
                 Response::builder()
                     .status(StatusCode::OK)
-                    .body("Hello, world!".into())
+                    .body("Hello, world!")
             })
             .ok();
         });

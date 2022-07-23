@@ -1,6 +1,7 @@
 use std::{error::Error, fs, net::TcpListener};
 
 use http::{Response, StatusCode};
+use shrike::Body;
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:4444")?;
@@ -11,7 +12,7 @@ fn main() -> std::io::Result<()> {
             Ok::<_, Box<dyn Error + Send + Sync>>(
                 Response::builder()
                     .status(StatusCode::OK)
-                    .body(file.try_into()?)?,
+                    .body(Body::try_from(file)?)?,
             )
         })?;
     }

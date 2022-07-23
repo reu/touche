@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use headers::HeaderMapExt;
 use http::response::Parts;
 
-use crate::{body::Body, upgrade::UpgradeExtension};
+use crate::{upgrade::UpgradeExtension, HttpBody};
 
 #[derive(PartialEq, Eq)]
 enum Encoding {
@@ -18,8 +18,8 @@ pub(crate) enum Outcome {
     Upgrade(UpgradeExtension),
 }
 
-pub(crate) fn write_response(
-    res: http::Response<Body>,
+pub(crate) fn write_response<B: HttpBody>(
+    res: http::Response<B>,
     stream: &mut impl Write,
 ) -> io::Result<Outcome> {
     let (
@@ -94,7 +94,7 @@ pub(crate) fn write_response(
             io::copy(&mut body.into_reader(), stream)?;
         }
         Encoding::Chunked => {
-            for chunk in body.into_iter() {
+            for chunk in body.into_chunks() {
                 stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
                 stream.write_all(&chunk)?;
                 stream.write_all(b"\r\n")?;
@@ -124,7 +124,7 @@ pub(crate) fn write_response(
 mod tests {
     use std::{io::Cursor, thread};
 
-    use crate::upgrade::Upgrade;
+    use crate::{upgrade::Upgrade, Body};
 
     use super::*;
     use http::{Response, StatusCode};
@@ -148,7 +148,7 @@ mod tests {
     fn writes_responses_with_bodies() {
         let res = Response::builder()
             .status(StatusCode::OK)
-            .body("lol".into())
+            .body("lol")
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
@@ -166,7 +166,7 @@ mod tests {
         let res = Response::builder()
             .status(StatusCode::OK)
             .header("content-length", "5")
-            .body("lol".into())
+            .body("lol")
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());

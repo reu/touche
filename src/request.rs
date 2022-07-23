@@ -131,6 +131,8 @@ impl Iterator for ChunkedReader {
 
 #[cfg(test)]
 mod test {
+    use crate::body::HttpBody;
+
     use super::*;
 
     #[test]

@@ -4,6 +4,10 @@ use std::{
     sync::mpsc::{self, SendError, Sender},
 };
 
+pub use http_body::*;
+
+mod http_body;
+
 #[derive(Default)]
 pub struct Body(Option<BodyInner>);
 
@@ -45,9 +49,13 @@ impl Body {
     pub fn from_reader<T: Into<Option<usize>>>(reader: impl Read + 'static, length: T) -> Self {
         Body(Some(BodyInner::Reader(Box::new(reader), length.into())))
     }
+}
 
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> Option<u64> {
+impl HttpBody for Body {
+    type BodyReader = BodyReader;
+    type Chunks = BodyChunkIterator;
+
+    fn len(&self) -> Option<u64> {
         match &self.0 {
             Some(BodyInner::Empty) => Some(0),
             Some(BodyInner::Buffered(bytes)) => Some(bytes.len() as u64),
@@ -58,7 +66,22 @@ impl Body {
         }
     }
 
-    pub fn into_bytes(mut self) -> io::Result<Vec<u8>> {
+    fn into_reader(mut self) -> Self::BodyReader {
+        match self.0.take().unwrap() {
+            BodyInner::Empty => BodyReader(BodyReaderInner::Buffered(Cursor::new(Vec::new()))),
+            BodyInner::Buffered(bytes) => BodyReader(BodyReaderInner::Buffered(Cursor::new(bytes))),
+            BodyInner::Iter(mut chunks) => {
+                let cursor = chunks.next().map(Cursor::new);
+                BodyReader(BodyReaderInner::Iter(chunks, cursor))
+            }
+            BodyInner::Reader(stream, Some(len)) => {
+                BodyReader(BodyReaderInner::Reader(Box::new(stream.take(len as u64))))
+            }
+            BodyInner::Reader(stream, None) => BodyReader(BodyReaderInner::Reader(stream)),
+        }
+    }
+
+    fn into_bytes(mut self) -> io::Result<Vec<u8>> {
         match self.0.take().unwrap() {
             BodyInner::Empty => Ok(Vec::new()),
             BodyInner::Buffered(bytes) => Ok(bytes),
@@ -76,19 +99,8 @@ impl Body {
         }
     }
 
-    pub fn into_reader(mut self) -> impl Read {
-        match self.0.take().unwrap() {
-            BodyInner::Empty => BodyReader(BodyReaderInner::Buffered(Cursor::new(Vec::new()))),
-            BodyInner::Buffered(bytes) => BodyReader(BodyReaderInner::Buffered(Cursor::new(bytes))),
-            BodyInner::Iter(mut chunks) => {
-                let cursor = chunks.next().map(Cursor::new);
-                BodyReader(BodyReaderInner::Iter(chunks, cursor))
-            }
-            BodyInner::Reader(stream, Some(len)) => {
-                BodyReader(BodyReaderInner::Reader(Box::new(stream.take(len as u64))))
-            }
-            BodyInner::Reader(stream, None) => BodyReader(BodyReaderInner::Reader(stream)),
-        }
+    fn into_chunks(self) -> Self::Chunks {
+        self.into_iter()
     }
 }
 
@@ -236,7 +248,7 @@ impl Iterator for BodyChunkIterator {
 mod tests {
     use std::io::{Cursor, Read};
 
-    use crate::Body;
+    use crate::{body::HttpBody, Body};
 
     #[test]
     fn test_body_reader_buffered() {

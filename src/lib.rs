@@ -12,6 +12,7 @@ use std::{
 mod read_queue;
 
 pub use body::Body;
+use body::HttpBody;
 use headers::{Connection, HeaderMapExt};
 use http::Version;
 use read_queue::ReadQueue;
@@ -20,27 +21,30 @@ use response::Outcome;
 pub type Request = http::Request<Body>;
 pub type Response = http::Response<Body>;
 
-pub trait Handler<Err>: Sync + Send
+pub trait Handler<Body, Err>: Sync + Send
 where
+    Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
-    fn handle(&self, request: Request) -> Result<Response, Err>;
+    fn handle(&self, request: Request) -> Result<http::Response<Body>, Err>;
 }
 
-impl<F, Err> Handler<Err> for F
+impl<F, Body, Err> Handler<Body, Err> for F
 where
-    F: Fn(Request) -> Result<Response, Err>,
+    F: Fn(Request) -> Result<http::Response<Body>, Err>,
     F: Sync + Send,
+    Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
-    fn handle(&self, request: Request) -> Result<Response, Err> {
+    fn handle(&self, request: Request) -> Result<http::Response<Body>, Err> {
         self(request)
     }
 }
 
-pub fn serve<Handle, Err>(stream: TcpStream, handle: Handle) -> io::Result<()>
+pub fn serve<Handle, Body, Err>(stream: TcpStream, handle: Handle) -> io::Result<()>
 where
-    Handle: Handler<Err>,
+    Handle: Handler<Body, Err>,
+    Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
     let mut read_queue = ReadQueue::new(BufReader::new(stream.try_clone()?));

@@ -33,7 +33,7 @@ fn main() -> std::io::Result<()> {
                             };
                         }
                     })
-                    .body("Upgrading...\n".into())
+                    .body("Upgrading...\n")
             })
         });
     }
