@@ -87,6 +87,27 @@ impl HttpBody for &str {
     }
 }
 
+impl HttpBody for &'static [u8] {
+    type BodyReader = &'static [u8];
+    type Chunks = iter::Once<Vec<u8>>;
+
+    fn len(&self) -> Option<u64> {
+        (*self).len().try_into().ok()
+    }
+
+    fn into_reader(self) -> Self::BodyReader {
+        self
+    }
+
+    fn into_bytes(self) -> io::Result<Vec<u8>> {
+        Ok(self.to_vec())
+    }
+
+    fn into_chunks(self) -> Self::Chunks {
+        iter::once(self.to_vec())
+    }
+}
+
 impl HttpBody for Vec<u8> {
     type BodyReader = Cursor<Vec<u8>>;
     type Chunks = iter::Once<Vec<u8>>;
