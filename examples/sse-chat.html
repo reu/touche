@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const evtSource = new EventSource("/messages");
+        const messages = document.getElementById("messages");
+        let currentUser = null;
+
+        evtSource.addEventListener("user", evt => {
+          const { id } = JSON.parse(evt.data);
+          currentUser = id;
+          messages.insertAdjacentHTML("beforeend", `<li>User ${id} connected</li>`);
+        });
+
+        evtSource.addEventListener("message", evt => {
+          const { userId, message } = JSON.parse(evt.data);
+          messages.insertAdjacentHTML("beforeend", `<li>${userId}: ${message}</li>`);
+        });
+
+        const messageForm = document.getElementById("message-form");
+        messageForm.addEventListener("submit", async evt => {
+          const message = messageForm.message.value;
+          evt.preventDefault();
+          await fetch("/messages", {
+            method: "POST",
+            body: message,
+            headers: {
+              "x-user-id": currentUser,
+            }
+          });
+          messageForm.message.value = "";
+          messages.insertAdjacentHTML("beforeend", `<li>${currentUser}: ${message}</li>`);
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+    <form id="message-form">
+      <input type="text" name="message">
+      <button type="submit">Send</button>
+    </form>
+
+    <ul id="messages"></ul>
+  </body>
+</html>
