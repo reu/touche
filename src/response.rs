@@ -60,9 +60,7 @@ pub(crate) fn write_response<B: HttpBody>(
             }
             (Some(len), None) => Encoding::FixedLength(len.0),
             (None, Some(len)) => {
-                if len > 0 {
-                    headers.typed_insert::<headers::ContentLength>(headers::ContentLength(len));
-                }
+                headers.typed_insert::<headers::ContentLength>(headers::ContentLength(len));
                 Encoding::FixedLength(len)
             }
             (None, None) => unreachable!(),
@@ -133,14 +131,16 @@ mod tests {
     fn writes_responses_without_bodies() {
         let res = Response::builder()
             .status(StatusCode::OK)
-            .header("some", "header")
             .body(Body::empty())
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
         let outcome = write_response(res, &mut output).unwrap();
 
-        assert_eq!(output.get_ref(), b"HTTP/1.1 200 OK\r\nsome: header\r\n\r\n");
+        assert_eq!(
+            output.get_ref(),
+            b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n"
+        );
         assert!(matches!(outcome, Outcome::KeepAlive));
     }
 
