@@ -1,4 +1,6 @@
 pub mod body;
+pub mod connection;
+mod read_queue;
 pub mod request;
 pub mod response;
 pub mod upgrade;
@@ -7,9 +9,6 @@ use std::{
     error::Error,
     io::{self, BufReader, BufWriter, Write},
 };
-
-pub mod connection;
-mod read_queue;
 
 pub use body::Body;
 use body::HttpBody;

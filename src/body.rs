@@ -99,17 +99,7 @@ impl HttpBody for Body {
         }
     }
 
-    fn into_chunks(self) -> Self::Chunks {
-        self.into_iter()
-    }
-}
-
-impl IntoIterator for Body {
-    type Item = Vec<u8>;
-
-    type IntoIter = ChunkIterator;
-
-    fn into_iter(mut self) -> Self::IntoIter {
+    fn into_chunks(mut self) -> Self::Chunks {
         match self.0.take().unwrap() {
             BodyInner::Empty => ChunkIterator(None),
             BodyInner::Buffered(bytes) => ChunkIterator(Some(ChunkIteratorInner::Single(bytes))),
