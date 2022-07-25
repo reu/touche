@@ -1,4 +1,4 @@
-use std::{os::unix::net::UnixListener, thread, fs};
+use std::{fs, os::unix::net::UnixListener, thread};
 
 use http::{Response, StatusCode};
 
@@ -10,7 +10,7 @@ fn main() -> std::io::Result<()> {
     for stream in listener.incoming() {
         let stream = stream?;
         thread::spawn(move || {
-            shrike::serve(stream, |_req| {
+            touche::serve(stream, |_req| {
                 Response::builder()
                     .status(StatusCode::OK)
                     .body("Hello, world!")

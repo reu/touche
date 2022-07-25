@@ -2,7 +2,7 @@ use std::{error::Error, net::TcpListener, thread, time::Duration};
 
 use http::{header::ACCEPT, Response, StatusCode};
 use indoc::indoc;
-use shrike::{Body, Request};
+use touche::{Body, Request};
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:4444")?;
@@ -10,7 +10,7 @@ fn main() -> std::io::Result<()> {
     for stream in listener.incoming() {
         let stream = stream?;
         thread::spawn(|| {
-            shrike::serve(stream, |req: Request| {
+            touche::serve(stream, |req: Request| {
                 match req.headers().get(ACCEPT).and_then(|a| a.to_str().ok()) {
                     Some(accept) if accept.contains("text/event-stream") => {
                         let (sender, body) = Body::channel();

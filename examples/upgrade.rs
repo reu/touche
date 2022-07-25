@@ -5,7 +5,7 @@ use std::{
 };
 
 use http::{header::UPGRADE, Response, StatusCode};
-use shrike::{connection::Connection, upgrade::Upgrade};
+use touche::{connection::Connection, upgrade::Upgrade};
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:4444")?;
@@ -13,7 +13,7 @@ fn main() -> std::io::Result<()> {
     for stream in listener.incoming() {
         let stream = stream?;
         thread::spawn(move || {
-            shrike::serve(stream, |_req| {
+            touche::serve(stream, |_req| {
                 Response::builder()
                     .status(StatusCode::SWITCHING_PROTOCOLS)
                     .header(UPGRADE, "line-protocol")

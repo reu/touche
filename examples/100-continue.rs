@@ -2,7 +2,7 @@ use std::{convert::Infallible, net::TcpListener};
 
 use headers::HeaderMapExt;
 use http::{Response, StatusCode};
-use shrike::{Body, Handler, Request};
+use touche::{Body, Handler, Request};
 
 struct UploadHandler {
     max_length: u64,
@@ -29,7 +29,7 @@ fn main() -> std::io::Result<()> {
 
     for stream in listener.incoming() {
         // Refuses payloads that exceeds 1kb
-        shrike::serve(stream?, UploadHandler { max_length: 1024 })?;
+        touche::serve(stream?, UploadHandler { max_length: 1024 })?;
     }
 
     Ok(())

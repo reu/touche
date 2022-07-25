@@ -1,8 +1,8 @@
 use std::{env, net::TcpListener};
 
 use http::{Response, StatusCode};
-use shrike::body::{ChunkIterator, HttpBody};
 use threadpool::ThreadPool;
+use touche::body::{ChunkIterator, HttpBody};
 
 use flate2::read::GzEncoder;
 use flate2::Compression;
@@ -43,7 +43,7 @@ fn main() -> std::io::Result<()> {
     for stream in listener.incoming() {
         let stream = stream?;
         pool.execute(move || {
-            shrike::serve(stream, |_req| {
+            touche::serve(stream, |_req| {
                 Response::builder()
                     .status(StatusCode::OK)
                     .header("content-type", "text/plain")

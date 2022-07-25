@@ -1,13 +1,13 @@
 use std::{error::Error, net::TcpListener, sync::mpsc, thread, time::Duration};
 
 use http::{Response, StatusCode};
-use shrike::Body;
+use touche::Body;
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:4444")?;
 
     for stream in listener.incoming() {
-        shrike::serve(stream?, |_req| {
+        touche::serve(stream?, |_req| {
             let (tx, rx) = mpsc::channel();
 
             thread::spawn(move || {

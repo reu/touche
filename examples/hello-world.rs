@@ -16,7 +16,7 @@ fn main() -> std::io::Result<()> {
     for stream in listener.incoming() {
         let stream = stream?;
         pool.execute(move || {
-            shrike::serve(stream, |_req| {
+            touche::serve(stream, |_req| {
                 Response::builder()
                     .status(StatusCode::OK)
                     .body("Hello, world!")

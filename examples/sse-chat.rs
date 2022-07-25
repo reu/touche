@@ -11,7 +11,7 @@ use std::{
 
 use http::{Method, Response, StatusCode};
 use indoc::formatdoc;
-use shrike::{body::HttpBody, Body, Request};
+use touche::{body::HttpBody, Body, Request};
 
 #[derive(Debug)]
 enum Event {
@@ -32,7 +32,7 @@ fn main() -> std::io::Result<()> {
         let stream = stream?;
         let users = users.clone();
         thread::spawn(move || {
-            shrike::serve(stream, |req: Request| match req.uri().path() {
+            touche::serve(stream, |req: Request| match req.uri().path() {
                 "/messages" if req.method() == Method::POST => {
                     let user_id = req
                         .headers()
