@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use headers::HeaderMapExt;
-use http::response::Parts;
+use http::{response::Parts, Version};
 
 use crate::{upgrade::UpgradeExtension, HttpBody};
 
@@ -45,7 +45,7 @@ pub(crate) fn write_response<B: HttpBody>(
 
     let content_length = headers.typed_get::<headers::ContentLength>();
 
-    let encoding = if has_chunked_encoding {
+    let encoding = if has_chunked_encoding && version == Version::HTTP_11 {
         Encoding::Chunked
     } else if content_length.is_some() || body.len().is_some() {
         match (content_length, body.len()) {
@@ -65,7 +65,7 @@ pub(crate) fn write_response<B: HttpBody>(
             }
             (None, None) => unreachable!(),
         }
-    } else if body.len().is_none() && !has_connection_close {
+    } else if body.len().is_none() && !has_connection_close && version == Version::HTTP_11 {
         headers.typed_insert::<headers::TransferEncoding>(headers::TransferEncoding::chunked());
         Encoding::Chunked
     } else {
@@ -73,6 +73,10 @@ pub(crate) fn write_response<B: HttpBody>(
             headers.typed_insert::<headers::Connection>(headers::Connection::close());
         }
         Encoding::CloseDelimited
+    };
+
+    if version == Version::HTTP_10 && has_chunked_encoding {
+        headers.remove(http::header::TRANSFER_ENCODING);
     };
 
     stream.write_all(format!("{version:?} {status}\r\n").as_bytes())?;
@@ -102,13 +106,13 @@ pub(crate) fn write_response<B: HttpBody>(
         }
     };
 
+    let connection = headers.typed_get::<headers::Connection>();
+
     let outcome = if let Some(upgrade) = extensions.remove::<UpgradeExtension>() {
         Outcome::Upgrade(upgrade)
     } else if encoding == Encoding::CloseDelimited
-        || headers
-            .typed_get::<headers::Connection>()
-            .filter(|conn| conn.contains("close"))
-            .is_some()
+        || version == Version::HTTP_10
+        || connection.filter(|conn| conn.contains("close")).is_some()
     {
         Outcome::Close
     } else {
@@ -329,5 +333,42 @@ mod tests {
         let outcome = write_response(res, &mut output).unwrap();
 
         assert!(matches!(outcome, Outcome::Upgrade(_)));
+    }
+
+    #[test]
+    fn writes_http_10_responses() {
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .version(Version::HTTP_10)
+            .body("lol")
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let outcome = write_response(res, &mut output).unwrap();
+
+        assert_eq!(
+            output.get_ref(),
+            b"HTTP/1.0 200 OK\r\ncontent-length: 3\r\n\r\nlol"
+        );
+        assert!(matches!(outcome, Outcome::Close));
+    }
+
+    #[test]
+    fn removes_chunked_transfer_encoding_from_http_10_responses() {
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .version(Version::HTTP_10)
+            .header("transfer-encoding", "chunked")
+            .body(Body::from_iter(std::iter::once("lol")))
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let outcome = write_response(res, &mut output).unwrap();
+
+        assert_eq!(
+            output.get_ref(),
+            b"HTTP/1.0 200 OK\r\nconnection: close\r\n\r\nlol"
+        );
+        assert!(matches!(outcome, Outcome::Close));
     }
 }

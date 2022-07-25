@@ -65,11 +65,25 @@ where
                     .filter(|conn| conn.contains("close"))
                     .is_some();
 
-                let demands_close = asks_for_close || req.version() == Version::HTTP_10;
+                let asks_for_keep_alive = req
+                    .headers()
+                    .typed_get::<headers::Connection>()
+                    .filter(|conn| conn.contains("keep-alive"))
+                    .is_some();
 
-                let res = handle
+                let version = req.version();
+
+                let demands_close = match version {
+                    Version::HTTP_09 => true,
+                    Version::HTTP_10 => !asks_for_keep_alive,
+                    _ => asks_for_close,
+                };
+
+                let mut res = handle
                     .handle(req)
                     .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+
+                *res.version_mut() = version;
 
                 match response::write_response(res, &mut writer)? {
                     Outcome::KeepAlive if demands_close => break,
