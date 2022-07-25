@@ -1,11 +1,11 @@
-use std::net::TcpStream;
+use crate::connection::Connection;
 
 pub trait UpgradeHandler: Sync + Send {
-    fn handle(&self, stream: TcpStream);
+    fn handle(&self, stream: Connection);
 }
 
-impl<F: Fn(TcpStream) + Sync + Send> UpgradeHandler for F {
-    fn handle(&self, stream: TcpStream) {
+impl<F: Fn(Connection) + Sync + Send> UpgradeHandler for F {
+    fn handle(&self, stream: Connection) {
         self(stream)
     }
 }

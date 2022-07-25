@@ -6,14 +6,15 @@ pub mod upgrade;
 use std::{
     error::Error,
     io::{self, BufReader, BufWriter, Write},
-    net::TcpStream,
 };
 
+pub mod connection;
 mod read_queue;
 
 pub use body::Body;
 use body::HttpBody;
-use headers::{Connection, HeaderMapExt};
+use connection::Connection;
+use headers::HeaderMapExt;
 use http::Version;
 use read_queue::ReadQueue;
 use response::Outcome;
@@ -41,16 +42,18 @@ where
     }
 }
 
-pub fn serve<Handle, Body, Err>(stream: TcpStream, handle: Handle) -> io::Result<()>
+pub fn serve<Conn, Handle, Body, Err>(stream: Conn, handle: Handle) -> io::Result<()>
 where
+    Conn: Into<Connection>,
     Handle: Handler<Body, Err>,
     Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
-    let mut read_queue = ReadQueue::new(BufReader::new(stream.try_clone()?));
+    let conn = stream.into();
+    let mut read_queue = ReadQueue::new(BufReader::new(conn.clone()));
 
     let mut reader = read_queue.enqueue();
-    let mut writer = BufWriter::new(stream);
+    let mut writer = BufWriter::new(conn);
 
     loop {
         match request::parse_request(reader) {
@@ -59,7 +62,7 @@ where
 
                 let asks_for_close = req
                     .headers()
-                    .typed_get::<Connection>()
+                    .typed_get::<headers::Connection>()
                     .filter(|conn| conn.contains("close"))
                     .is_some();
 

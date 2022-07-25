@@ -1,11 +1,11 @@
 use std::{
     io::{BufRead, BufReader, BufWriter, Write},
-    net::{TcpListener, TcpStream},
+    net::TcpListener,
     thread,
 };
 
 use http::{header::UPGRADE, Response, StatusCode};
-use shrike::upgrade::Upgrade;
+use shrike::{connection::Connection, upgrade::Upgrade};
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("0.0.0.0:4444")?;
@@ -17,8 +17,8 @@ fn main() -> std::io::Result<()> {
                 Response::builder()
                     .status(StatusCode::SWITCHING_PROTOCOLS)
                     .header(UPGRADE, "line-protocol")
-                    .upgrade(|stream: TcpStream| {
-                        let reader = BufReader::new(stream.try_clone().unwrap());
+                    .upgrade(|stream: Connection| {
+                        let reader = BufReader::new(stream.clone());
                         let mut writer = BufWriter::new(stream);
 
                         // Just a simple protocol that will echo every line sent
