@@ -21,7 +21,7 @@ use response::Outcome;
 pub type Request = http::Request<Body>;
 pub type Response = http::Response<Body>;
 
-pub trait Handler<Body, Err>: Sync + Send
+pub trait Handler<Body, Err>
 where
     Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
