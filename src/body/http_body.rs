@@ -3,9 +3,11 @@ use std::{
     iter,
 };
 
+use headers::HeaderMap;
+
 pub trait HttpBody: Sized {
     type BodyReader: Read;
-    type Chunks: Iterator<Item = Vec<u8>>;
+    type Chunks: Iterator<Item = Chunk>;
 
     fn len(&self) -> Option<u64>;
 
@@ -26,7 +28,7 @@ pub trait HttpBody: Sized {
 
 impl HttpBody for () {
     type BodyReader = io::Empty;
-    type Chunks = iter::Empty<Vec<u8>>;
+    type Chunks = iter::Empty<Chunk>;
 
     fn len(&self) -> Option<u64> {
         Some(0)
@@ -47,7 +49,7 @@ impl HttpBody for () {
 
 impl HttpBody for String {
     type BodyReader = Cursor<Vec<u8>>;
-    type Chunks = iter::Once<Vec<u8>>;
+    type Chunks = iter::Once<Chunk>;
 
     fn len(&self) -> Option<u64> {
         self.len().try_into().ok()
@@ -62,13 +64,13 @@ impl HttpBody for String {
     }
 
     fn into_chunks(self) -> Self::Chunks {
-        iter::once(self.into_bytes())
+        iter::once(self.into_bytes().into())
     }
 }
 
 impl HttpBody for &str {
     type BodyReader = Cursor<Vec<u8>>;
-    type Chunks = iter::Once<Vec<u8>>;
+    type Chunks = iter::Once<Chunk>;
 
     fn len(&self) -> Option<u64> {
         str::len(self).try_into().ok()
@@ -83,13 +85,13 @@ impl HttpBody for &str {
     }
 
     fn into_chunks(self) -> Self::Chunks {
-        iter::once(self.bytes().collect())
+        iter::once(Chunk::Data(self.bytes().collect()))
     }
 }
 
 impl HttpBody for &'static [u8] {
     type BodyReader = &'static [u8];
-    type Chunks = iter::Once<Vec<u8>>;
+    type Chunks = iter::Once<Chunk>;
 
     fn len(&self) -> Option<u64> {
         (*self).len().try_into().ok()
@@ -104,13 +106,13 @@ impl HttpBody for &'static [u8] {
     }
 
     fn into_chunks(self) -> Self::Chunks {
-        iter::once(self.to_vec())
+        iter::once(self.to_vec().into())
     }
 }
 
 impl HttpBody for Vec<u8> {
     type BodyReader = Cursor<Vec<u8>>;
-    type Chunks = iter::Once<Vec<u8>>;
+    type Chunks = iter::Once<Chunk>;
 
     fn len(&self) -> Option<u64> {
         self.len().try_into().ok()
@@ -125,6 +127,17 @@ impl HttpBody for Vec<u8> {
     }
 
     fn into_chunks(self) -> Self::Chunks {
-        iter::once(self)
+        iter::once(self.into())
+    }
+}
+
+pub enum Chunk {
+    Data(Vec<u8>),
+    Trailers(HeaderMap),
+}
+
+impl<T: Into<Vec<u8>>> From<T> for Chunk {
+    fn from(chunk: T) -> Self {
+        Self::Data(chunk.into())
     }
 }

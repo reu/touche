@@ -1,9 +1,9 @@
 use std::io::{self, Write};
 
-use headers::HeaderMapExt;
+use headers::{HeaderMap, HeaderMapExt};
 use http::{response::Parts, Version};
 
-use crate::{upgrade::UpgradeExtension, HttpBody};
+use crate::{body::Chunk, upgrade::UpgradeExtension, HttpBody};
 
 #[derive(PartialEq, Eq)]
 enum Encoding {
@@ -96,13 +96,29 @@ pub(crate) fn write_response<B: HttpBody>(
             io::copy(&mut body.into_reader(), stream)?;
         }
         Encoding::Chunked => {
+            let mut trailers = HeaderMap::new();
+
             for chunk in body.into_chunks() {
-                stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
-                stream.write_all(&chunk)?;
-                stream.write_all(b"\r\n")?;
-                stream.flush()?;
+                match chunk {
+                    Chunk::Data(chunk) => {
+                        stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
+                        stream.write_all(&chunk)?;
+                        stream.write_all(b"\r\n")?;
+                        stream.flush()?;
+                    }
+                    Chunk::Trailers(te) => {
+                        trailers.extend(te);
+                    }
+                }
             }
-            stream.write_all(b"0\r\n\r\n")?;
+
+            stream.write_all(b"0\r\n")?;
+            for (name, val) in trailers.iter() {
+                stream.write_all(
+                    &[format!("{name}: ").as_bytes(), val.as_bytes(), b"\r\n"].concat(),
+                )?;
+            }
+            stream.write_all(b"\r\n")?;
         }
     };
 
@@ -194,6 +210,34 @@ mod tests {
         assert_eq!(
             output.get_ref(),
             b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n6\r\nchunk1\r\n6\r\nchunk2\r\n0\r\n\r\n"
+        );
+        assert!(matches!(outcome, Outcome::KeepAlive));
+    }
+
+    #[test]
+    fn writes_chunked_responses_with_trailers() {
+        let (sender, body) = Body::channel();
+
+        let send_thread = thread::spawn(move || {
+            sender.send("lol").unwrap();
+            sender.send("wut").unwrap();
+            sender.send_trailer("content-length", "6").unwrap();
+        });
+
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .header("trailers", "content-length")
+            .body(body)
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let outcome = write_response(res, &mut output).unwrap();
+
+        send_thread.join().unwrap();
+
+        assert_eq!(
+            output.get_ref(),
+            b"HTTP/1.1 200 OK\r\ntrailers: content-length\r\ntransfer-encoding: chunked\r\n\r\n3\r\nlol\r\n3\r\nwut\r\n0\r\ncontent-length: 6\r\n\r\n"
         );
         assert!(matches!(outcome, Outcome::KeepAlive));
     }

@@ -1,9 +1,11 @@
 use std::{
+    error::Error,
     fs::File,
     io::{self, Cursor, Read},
     sync::mpsc::{self, SendError, Sender},
 };
 
+use headers::{HeaderMap, HeaderName, HeaderValue};
 pub use http_body::*;
 
 mod http_body;
@@ -16,15 +18,35 @@ enum BodyInner {
     #[default]
     Empty,
     Buffered(Vec<u8>),
-    Iter(Box<dyn Iterator<Item = Vec<u8>>>),
+    Iter(Box<dyn Iterator<Item = Chunk>>),
     Reader(Box<dyn Read>, Option<usize>),
 }
 
-pub struct BodyChannel(Sender<Vec<u8>>);
+pub struct BodyChannel(Sender<Chunk>);
 
 impl BodyChannel {
-    pub fn send<T: Into<Vec<u8>>>(&self, data: T) -> Result<(), SendError<Vec<u8>>> {
-        self.0.send(data.into())
+    pub fn send<T: Into<Vec<u8>>>(&self, data: T) -> Result<(), SendError<Chunk>> {
+        self.0.send(data.into().into())
+    }
+
+    pub fn send_trailer<K, V>(
+        &self,
+        header: K,
+        value: V,
+    ) -> Result<(), Box<dyn Error + Send + Sync>>
+    where
+        K: TryInto<HeaderName>,
+        V: TryInto<HeaderValue>,
+        <K as TryInto<headers::HeaderName>>::Error: Error + Send + Sync + 'static,
+        <V as TryInto<headers::HeaderValue>>::Error: Error + Send + Sync + 'static,
+    {
+        let mut trailers = HeaderMap::new();
+        trailers.insert(header.try_into()?, value.try_into()?);
+        Ok(self.send_trailers(trailers)?)
+    }
+
+    pub fn send_trailers(&self, trailers: HeaderMap) -> Result<(), SendError<Chunk>> {
+        self.0.send(Chunk::Trailers(trailers))
     }
 }
 
@@ -40,7 +62,7 @@ impl Body {
     }
 
     #[allow(clippy::should_implement_trait)]
-    pub fn from_iter<T: Into<Vec<u8>>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
+    pub fn from_iter<T: Into<Chunk>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
         Body(Some(BodyInner::Iter(Box::new(
             chunks.into_iter().map(|chunk| chunk.into()),
         ))))
@@ -70,9 +92,13 @@ impl HttpBody for Body {
         match self.0.take().unwrap() {
             BodyInner::Empty => BodyReader(BodyReaderInner::Buffered(Cursor::new(Vec::new()))),
             BodyInner::Buffered(bytes) => BodyReader(BodyReaderInner::Buffered(Cursor::new(bytes))),
-            BodyInner::Iter(mut chunks) => {
+            BodyInner::Iter(chunks) => {
+                let mut chunks = chunks.filter_map(|chunk| match chunk {
+                    Chunk::Data(data) => Some(data),
+                    Chunk::Trailers(_) => None,
+                });
                 let cursor = chunks.next().map(Cursor::new);
-                BodyReader(BodyReaderInner::Iter(chunks, cursor))
+                BodyReader(BodyReaderInner::Iter(Box::new(chunks), cursor))
             }
             BodyInner::Reader(stream, Some(len)) => {
                 BodyReader(BodyReaderInner::Reader(Box::new(stream.take(len as u64))))
@@ -85,7 +111,13 @@ impl HttpBody for Body {
         match self.0.take().unwrap() {
             BodyInner::Empty => Ok(Vec::new()),
             BodyInner::Buffered(bytes) => Ok(bytes),
-            BodyInner::Iter(chunks) => Ok(chunks.flatten().collect()),
+            BodyInner::Iter(chunks) => Ok(chunks
+                .filter_map(|chunk| match chunk {
+                    Chunk::Data(data) => Some(data),
+                    Chunk::Trailers(_) => None,
+                })
+                .flatten()
+                .collect()),
             BodyInner::Reader(stream, Some(len)) => {
                 let mut buf = Vec::with_capacity(len);
                 stream.take(len as u64).read_to_end(&mut buf)?;
@@ -215,16 +247,16 @@ impl ChunkIterator {
 
 enum ChunkIteratorInner {
     Single(Vec<u8>),
-    Iter(Box<dyn Iterator<Item = Vec<u8>>>),
+    Iter(Box<dyn Iterator<Item = Chunk>>),
     Reader(Box<dyn Read>, Option<usize>),
 }
 
 impl Iterator for ChunkIterator {
-    type Item = Vec<u8>;
+    type Item = Chunk;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.0.take()? {
-            ChunkIteratorInner::Single(bytes) => Some(bytes),
+            ChunkIteratorInner::Single(bytes) => Some(bytes.into()),
             ChunkIteratorInner::Iter(mut iter) => {
                 let item = iter.next()?;
                 self.0 = Some(ChunkIteratorInner::Iter(iter));
@@ -233,7 +265,7 @@ impl Iterator for ChunkIterator {
             ChunkIteratorInner::Reader(mut reader, Some(len)) => {
                 let mut buf = vec![0_u8; len];
                 reader.read_exact(&mut buf).ok()?;
-                Some(buf)
+                Some(buf.into())
             }
             ChunkIteratorInner::Reader(mut reader, None) => {
                 let mut buf = [0_u8; 8 * 1024];
@@ -241,7 +273,7 @@ impl Iterator for ChunkIterator {
                     0 => None,
                     bytes => {
                         self.0 = Some(ChunkIteratorInner::Reader(reader, None));
-                        Some(buf[0..bytes].to_vec())
+                        Some(buf[0..bytes].to_vec().into())
                     }
                 }
             }
