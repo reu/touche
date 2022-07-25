@@ -14,7 +14,7 @@ pub use body::Body;
 use body::HttpBody;
 use connection::Connection;
 use headers::HeaderMapExt;
-use http::Version;
+use http::{StatusCode, Version};
 use read_queue::ReadQueue;
 use response::Outcome;
 
@@ -27,6 +27,10 @@ where
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
     fn handle(&self, request: Request) -> Result<http::Response<Body>, Err>;
+
+    fn should_continue(&self, _: &Request) -> StatusCode {
+        StatusCode::CONTINUE
+    }
 }
 
 impl<F, Body, Err> Handler<Body, Err> for F
@@ -78,6 +82,28 @@ where
                     Version::HTTP_10 => !asks_for_keep_alive,
                     _ => asks_for_close,
                 };
+
+                let expects_continue = req
+                    .headers()
+                    .typed_get::<headers::Expect>()
+                    .filter(|expect| expect == &headers::Expect::CONTINUE)
+                    .is_some();
+
+                if expects_continue {
+                    match handle.should_continue(&req) {
+                        status @ StatusCode::CONTINUE => {
+                            let res = http::Response::builder().status(status).body(()).unwrap();
+                            response::write_response(res, &mut writer)?;
+                            writer.flush()?;
+                        }
+                        status => {
+                            let res = http::Response::builder().status(status).body(()).unwrap();
+                            response::write_response(res, &mut writer)?;
+                            writer.flush()?;
+                            continue;
+                        }
+                    };
+                }
 
                 let mut res = handle
                     .handle(req)
