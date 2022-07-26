@@ -127,7 +127,6 @@ pub(crate) fn write_response<B: HttpBody>(
     let outcome = if let Some(upgrade) = extensions.remove::<UpgradeExtension>() {
         Outcome::Upgrade(upgrade)
     } else if encoding == Encoding::CloseDelimited
-        || version == Version::HTTP_10
         || connection.filter(|conn| conn.contains("close")).is_some()
     {
         Outcome::Close
@@ -394,7 +393,7 @@ mod tests {
             output.get_ref(),
             b"HTTP/1.0 200 OK\r\ncontent-length: 3\r\n\r\nlol"
         );
-        assert!(matches!(outcome, Outcome::Close));
+        assert!(matches!(outcome, Outcome::KeepAlive));
     }
 
     #[test]

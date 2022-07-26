@@ -13,9 +13,10 @@ use std::{
 pub use body::Body;
 use body::HttpBody;
 use connection::Connection;
-use headers::HeaderMapExt;
+use headers::{HeaderMapExt, HeaderValue};
 use http::{StatusCode, Version};
 use read_queue::ReadQueue;
+use request::ParseError;
 use response::Outcome;
 
 pub type Request = http::Request<Body>;
@@ -111,6 +112,11 @@ where
 
                 *res.version_mut() = version;
 
+                if version == Version::HTTP_10 && !asks_for_keep_alive {
+                    res.headers_mut()
+                        .insert("connection", HeaderValue::from_static("close"));
+                }
+
                 match response::write_response(res, &mut writer)? {
                     Outcome::KeepAlive if demands_close => break,
                     Outcome::KeepAlive => writer.flush()?,
@@ -121,6 +127,7 @@ where
                     }
                 }
             }
+            Err(ParseError::ConnectionClosed) => break,
             Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err)),
         }
     }
