@@ -8,6 +8,8 @@ use crate::body::Body;
 
 #[derive(Error, Debug)]
 pub enum ParseError {
+    #[error("connection closed")]
+    ConnectionClosed,
     #[error("io error")]
     Io(#[from] io::Error),
     #[error("invalid request")]
@@ -44,7 +46,7 @@ pub(crate) fn parse_request(
     }
 
     if buf.is_empty() {
-        return Err(ParseError::IncompleteRequest);
+        return Err(ParseError::ConnectionClosed);
     }
 
     let mut headers = [httparse::EMPTY_HEADER; 64];
