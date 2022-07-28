@@ -1,10 +1,10 @@
-# touche
+# touché
 
 Touché is a low level but fully featured HTTP 1.0/1.1 library.
 
 It tries to mimic [hyper](https://crates.io/crates/hyper), but with a synchronous API.
 
-More information can be found in the [crate documentation](https://docs.rs/touche).
+For now only the server API is implemented. HTTP client is planned but is sitll a work in progress.
 
 ## Hello world
 
@@ -111,6 +111,38 @@ fn main() -> std::io::Result<()> {
         })
 }
 
+```
+
+### Response upgrades
+```rust
+use std::io::{BufRead, BufReader, BufWriter, Write};
+
+use touche::{header, upgrade::Upgrade, Connection, Response, Server, StatusCode};
+
+fn main() -> std::io::Result<()> {
+    Server::bind("0.0.0.0:4444").serve(|_req| {
+        Response::builder()
+            .status(StatusCode::SWITCHING_PROTOCOLS)
+            .header(header::UPGRADE, "line-protocol")
+            .upgrade(|stream: Connection| {
+                let reader = BufReader::new(stream.clone());
+                let mut writer = BufWriter::new(stream);
+
+                // Just a simple protocol that will echo every line sent
+                for line in reader.lines() {
+                    match line {
+                        Ok(line) if line.as_str() == "quit" => break,
+                        Ok(line) => {
+                            writer.write_all(format!("{line}\n").as_bytes());
+                            writer.flush();
+                        }
+                        Err(_err) => break,
+                    };
+                }
+            })
+            .body("Upgrading...\n")
+    })
+}
 ```
 
 You can find a other examples in the [examples directory](https://github.com/reu/touche/tree/master/examples).
