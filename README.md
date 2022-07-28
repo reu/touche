@@ -8,7 +8,7 @@ For now only the server API is implemented. HTTP client is planned but is sitll 
 
 ## Hello world
 
-```rust
+```rust no_run
 use touche::{Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
@@ -50,7 +50,7 @@ But also has some notable differences:
 
 ### Chunked response
 
-```rust
+```rust no_run
 use std::{error::Error, thread};
 
 use touche::{Body, Response, Server, StatusCode};
@@ -74,7 +74,7 @@ fn main() -> std::io::Result<()> {
 
 ### Streaming files
 
-```rust
+```rust no_run
 use std::{fs, io};
 
 use touche::{Body, Response, Server, StatusCode};
@@ -94,7 +94,7 @@ fn main() -> std::io::Result<()> {
 
 ### Naive routing with pattern matching
 
-```rust
+```rust no_run
 use touche::{body::HttpBody, Body, Method, Request, Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
@@ -136,7 +136,7 @@ fn main() -> std::io::Result<()> {
 ```
 
 ### Response upgrades
-```rust
+```rust no_run
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
 use touche::{header, upgrade::Upgrade, Connection, Response, Server, StatusCode};
