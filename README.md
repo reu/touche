@@ -6,7 +6,9 @@ It tries to mimic [hyper](https://crates.io/crates/hyper), but with a synchronou
 
 More information can be found in the [crate documentation](https://docs.rs/touche).
 
-## Hello world example
+## Examples
+
+### Hello world
 
 ```rust
 use touche::{Response, Server, StatusCode};
@@ -18,6 +20,73 @@ fn main() -> std::io::Result<()> {
             .body("Hello World")
     })
 }
+```
+
+### Chunked response
+
+```rust
+use std::{error::Error, thread};
+
+use touche::{Body, Response, Server, StatusCode};
+
+fn main() -> std::io::Result<()> {
+    Server::bind("0.0.0.0:4444").serve(|_req| {
+        let (channel, body) = Body::channel();
+
+        thread::spawn(move || {
+            channel.send("chunk1").unwrap();
+            channel.send("chunk2").unwrap();
+            channel.send("chunk3").unwrap();
+        });
+
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(body)
+    })
+}
+```
+
+### Naive routing with pattern matching
+
+```rust
+use touche::{body::HttpBody, Body, Method, Request, Response, Server, StatusCode};
+
+fn main() -> std::io::Result<()> {
+    Server::builder()
+        .bind("0.0.0.0:4444")
+        .serve(|req: Request<Body>| {
+            match (req.method(), req.uri().path()) {
+                (_, "/") => Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::from("Usage: curl -d hello localhost:4444/echo\n")),
+
+                // Responds with the same payload
+                (&Method::POST, "/echo") => Response::builder()
+                    .status(StatusCode::OK)
+                    .body(req.into_body()),
+
+                // Responds with the reversed payload
+                (&Method::POST, "/reverse") => {
+                    let body = req.into_body().into_bytes().unwrap_or_default();
+
+                    match std::str::from_utf8(&body) {
+                        Ok(message) => Response::builder()
+                            .status(StatusCode::OK)
+                            .body(message.chars().rev().collect::<String>().into()),
+
+                        Err(err) => Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .body(err.to_string().into()),
+                    }
+                }
+
+                _ => Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Body::empty()),
+            }
+        })
+}
+
 ```
 
 You can find a other examples in the [examples directory](https://github.com/reu/touche/tree/master/examples).
