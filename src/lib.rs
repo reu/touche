@@ -4,6 +4,8 @@ mod read_queue;
 pub mod request;
 pub mod response;
 pub mod server;
+#[cfg(feature = "rustls")]
+mod tls;
 pub mod upgrade;
 
 use std::{

@@ -8,10 +8,14 @@ repository = "https://github.com/reu/touche"
 categories = ["network-programming", "web-programming"]
 keywords = ["web", "http", "protocol"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 headers = "0.3.7"
 http = "0.2.8"
 httparse = "1.7.1"
+rustls = { version = "0.20.6", optional = true, default-features = false }
 thiserror = "1.0.31"
 threadpool = "1.8.1"
 
@@ -20,3 +24,4 @@ base64 = "0.13.0"
 flate2 = "1.0.24"
 indoc = "1.0.6"
 md5 = "0.7.0"
+rustls-pemfile = "1.0.0"
