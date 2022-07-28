@@ -52,7 +52,7 @@ where
     }
 }
 
-pub fn serve<C: Into<Connection>, A: App>(stream: C, app: A) -> io::Result<()> {
+pub(crate) fn serve<C: Into<Connection>, A: App>(stream: C, app: A) -> io::Result<()> {
     let conn = stream.into();
     let mut read_queue = ReadQueue::new(BufReader::new(conn.clone()));
 
