@@ -24,19 +24,18 @@ pub use server::Server;
 pub type Request = http::Request<Body>;
 pub type Response = http::Response<Body>;
 
-pub trait Handler<Body, Err>: Clone
-where
-    Body: HttpBody,
-    Err: Into<Box<dyn Error + Send + Sync>>,
-{
-    fn handle(&self, request: Request) -> Result<http::Response<Body>, Err>;
+pub trait App: Clone {
+    type Body: HttpBody;
+    type Error: Into<Box<dyn Error + Send + Sync>>;
+
+    fn handle(&self, request: Request) -> Result<http::Response<Self::Body>, Self::Error>;
 
     fn should_continue(&self, _: &Request) -> StatusCode {
         StatusCode::CONTINUE
     }
 }
 
-impl<F, Body, Err> Handler<Body, Err> for F
+impl<F, Body, Err> App for F
 where
     F: Fn(Request) -> Result<http::Response<Body>, Err>,
     F: Sync + Send,
@@ -44,18 +43,15 @@ where
     Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
-    fn handle(&self, request: Request) -> Result<http::Response<Body>, Err> {
+    type Body = Body;
+    type Error = Err;
+
+    fn handle(&self, request: Request) -> Result<http::Response<Self::Body>, Self::Error> {
         self(request)
     }
 }
 
-pub fn serve<Conn, Handle, Body, Err>(stream: Conn, handle: Handle) -> io::Result<()>
-where
-    Conn: Into<Connection>,
-    Handle: Handler<Body, Err>,
-    Body: HttpBody,
-    Err: Into<Box<dyn Error + Send + Sync>>,
-{
+pub fn serve<C: Into<Connection>, H: App>(stream: C, app: H) -> io::Result<()> {
     let conn = stream.into();
     let mut read_queue = ReadQueue::new(BufReader::new(conn.clone()));
 
@@ -94,7 +90,7 @@ where
                     .is_some();
 
                 if expects_continue {
-                    match handle.should_continue(&req) {
+                    match app.should_continue(&req) {
                         status @ StatusCode::CONTINUE => {
                             let res = http::Response::builder().status(status).body(()).unwrap();
                             response::write_response(res, &mut writer)?;
@@ -109,7 +105,7 @@ where
                     };
                 }
 
-                let mut res = handle
+                let mut res = app
                     .handle(req)
                     .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
 

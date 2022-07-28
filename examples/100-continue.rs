@@ -2,14 +2,17 @@ use std::convert::Infallible;
 
 use headers::HeaderMapExt;
 use http::{Request, Response, StatusCode};
-use touche::{Body, Handler, Server};
+use touche::{App, Body, Server};
 
 #[derive(Clone)]
 struct UploadHandler {
     max_length: u64,
 }
 
-impl Handler<&'static str, Infallible> for UploadHandler {
+impl App for UploadHandler {
+    type Body = &'static str;
+    type Error = Infallible;
+
     fn handle(&self, _req: Request<Body>) -> Result<http::Response<&'static str>, Infallible> {
         Ok(Response::builder()
             .status(StatusCode::OK)

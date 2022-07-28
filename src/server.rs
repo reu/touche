@@ -6,7 +6,7 @@ use std::{
 
 use threadpool::ThreadPool;
 
-use crate::{body::HttpBody, connection::Connection, serve, Handler};
+use crate::{connection::Connection, serve, App};
 
 pub struct Server<'a> {
     thread_pool: ThreadPool,
@@ -14,12 +14,10 @@ pub struct Server<'a> {
 }
 
 impl<'a> Server<'a> {
-    pub fn serve<Handle, Body, Err>(self, app: Handle) -> io::Result<()>
+    pub fn serve<Handle>(self, app: Handle) -> io::Result<()>
     where
-        Handle: Handler<Body, Err>,
+        Handle: App,
         Handle: Send + Clone + 'static,
-        Body: HttpBody,
-        Err: Into<Box<dyn Error + Send + Sync>>,
     {
         for conn in self.incoming {
             let app = app.clone();
@@ -31,15 +29,10 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
-    pub fn serve_connection<Conn, Handle, Body, Err, HandlerErr>(self, app: Conn) -> io::Result<()>
+    pub fn serve_connection<Conn>(self, app: Conn) -> io::Result<()>
     where
-        Conn: ConnectionHandler<Handle, Err>,
+        Conn: ConnectionHandler,
         Conn: Send + Clone + 'static,
-        Handle: Handler<Body, HandlerErr>,
-        Handle: Send + Clone + 'static,
-        Body: HttpBody,
-        Err: Into<Box<dyn Error + Send + Sync>>,
-        HandlerErr: Into<Box<dyn Error + Send + Sync>>,
     {
         for conn in self.incoming {
             let app = app.clone();
@@ -110,20 +103,24 @@ impl Iterator for TcpAcceptor {
     }
 }
 
-pub trait ConnectionHandler<R, Err>
-where
-    Err: Into<Box<dyn Error + Send + Sync>>,
-{
-    fn handle_connection(&self, conn: &Connection) -> Result<R, Err>;
+pub trait ConnectionHandler {
+    type App: App + Send;
+    type Error: Into<Box<dyn Error + Send + Sync>>;
+
+    fn handle_connection(&self, conn: &Connection) -> Result<Self::App, Self::Error>;
 }
 
-impl<F, R, Err> ConnectionHandler<R, Err> for F
+impl<F, A, Err> ConnectionHandler for F
 where
-    F: Fn(&Connection) -> Result<R, Err>,
+    F: Fn(&Connection) -> Result<A, Err>,
     F: Sync + Send + Clone,
     Err: Into<Box<dyn Error + Send + Sync>>,
+    A: App + Send,
 {
-    fn handle_connection(&self, conn: &Connection) -> Result<R, Err> {
+    type App = A;
+    type Error = Err;
+
+    fn handle_connection(&self, conn: &Connection) -> Result<Self::App, Self::Error> {
         self(conn)
     }
 }
