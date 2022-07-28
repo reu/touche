@@ -1,6 +1,6 @@
 # touche
 
-Touché is a low level but fully featured HTTP library.
+Touché is a low level but fully featured HTTP 1.0/1.1 library.
 
 It tries to mimic [hyper](https://crates.io/crates/hyper), but with a synchronous API.
 
