@@ -6,9 +6,7 @@ It tries to mimic [hyper](https://crates.io/crates/hyper), but with a synchronou
 
 More information can be found in the [crate documentation](https://docs.rs/touche).
 
-## Examples
-
-### Hello world
+## Hello world
 
 ```rust
 use touche::{Response, Server, StatusCode};
@@ -21,6 +19,32 @@ fn main() -> std::io::Result<()> {
     })
 }
 ```
+
+## Features
+- HTTP Server (thread per connection design)
+- ~HTTP Client~ (work in progress)
+- Non buffered (streaming) requests and response bodies
+- TLS support
+- Upgrade connections
+- Trailers headers
+- 100 continue expectations support
+- Unix sockets servers
+
+## Comparison with Hyper
+
+Touché follows some of the same designs as Hyper:
+
+- Low level
+- Uses the [http](https://crates.io/crates/http) crate to represent all the HTTP related types
+- Allows fine granded implementations of an HttpBody
+- Fully featured and correct
+
+But also, there are some notable differences:
+- It is synchronous
+- It uses `Vec<u8>` to represent bytes instead of [Bytes](https://crates.io/crates/bytes)
+- Doesn't support (and probably never will) HTTP 2
+
+## Other examples
 
 ### Chunked response
 
@@ -91,26 +115,11 @@ fn main() -> std::io::Result<()> {
 
 You can find a other examples in the [examples directory](https://github.com/reu/touche/tree/master/examples).
 
-## Features
-- HTTP Server (thread per connection design)
-- ~HTTP Client~ (work in progress)
-- Non buffered (streaming) requests and response bodies
-- TLS support
-- Upgrade connections
-- Trailers headers
-- 100 continue expectations support
-- Unix sockets servers
+## Disclaimer
 
-## Comparison with Hyper
+This library is by no means a critique to Hyper or to async Rust. I **really** love both of then.
 
-Touché follows some of the same designs as Hyper:
-
-- Low level
-- Uses the [http](https://crates.io/crates/http) crate to represent all the HTTP related types
-- Allows fine granded implementations of an HttpBody
-- Fully featured and correct
-
-But also, there are some notable differences:
-- It is synchronous
-- It uses `Vec<u8>` to represent bytes instead of [Bytes](https://crates.io/crates/bytes)
-- Doesn't support (and probably never will) HTTP 2
+The main motivation I had to write this library was to be able to introduce Rust to my co-workers
+(which are mainly web developers). A synchronous library is way more beginner friendly than an
+async one, and by having an API that ressembles the "canonical" HTTP Rust library, people can
+learn Rust concepts in a easier way before adventuring through Hyper and async.
