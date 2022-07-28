@@ -1,3 +1,16 @@
+//! Streaming bodies for Requests and Responses.
+//!
+//! Bodies are not buffered by default, so applications don't use memory they don't need.
+//!
+//! As [hyper](https://docs.rs/hyper) there are two pieces to this:
+//!
+//! - **The [`HttpBody`](HttpBody) trait** describes all possible bodies.
+//!   This allows any body type that implements `HttpBody`, allowing
+//!   applications to have fine-grained control over their streaming.
+//! - **The [`Body`](Body) concrete type**, which is an implementation of
+//!   `HttpBody`, and returned by touche as a "receive stream". It is also a decent default
+//!   implementation if you don't have very custom needs of your send streams.
+
 use std::{
     error::Error,
     fs::File,
@@ -10,6 +23,8 @@ pub use http_body::*;
 
 mod http_body;
 
+/// The [`HttpBody`] used on receiving server requests.
+/// It is also a good default body to return as responses.
 #[derive(Default)]
 pub struct Body(Option<BodyInner>);
 
@@ -24,11 +39,15 @@ enum BodyInner {
 
 pub struct BodyChannel(Sender<Chunk>);
 
+/// The sender half of a channel, used to stream chunks from another thread.
 impl BodyChannel {
+    /// Send a chunk of bytes to this body.
     pub fn send<T: Into<Vec<u8>>>(&self, data: T) -> Result<(), SendError<Chunk>> {
         self.0.send(data.into().into())
     }
 
+    /// Send a trailer header. Not that trailers will be buffered, so you are not required to send
+    /// then only after sending all the chunks.
     pub fn send_trailer<K, V>(
         &self,
         header: K,
@@ -45,22 +64,30 @@ impl BodyChannel {
         Ok(self.send_trailers(trailers)?)
     }
 
+    /// Sends trailers to this body. Not that trailers will be buffered, so you are not required to
+    /// send then only after sending all the chunks.
     pub fn send_trailers(&self, trailers: HeaderMap) -> Result<(), SendError<Chunk>> {
         self.0.send(Chunk::Trailers(trailers))
     }
 }
 
 impl Body {
+    /// Create an empty [`Body`] stream.
     pub fn empty() -> Self {
         Body(Some(BodyInner::Empty))
     }
 
+    /// Create a [`Body`] stream with an associated sender half.
+    /// Useful when wanting to stream chunks from another thread.
     pub fn channel() -> (BodyChannel, Self) {
         let (tx, rx) = mpsc::channel();
         let body = Body(Some(BodyInner::Iter(Box::new(rx.into_iter()))));
         (BodyChannel(tx), body)
     }
 
+    /// Create a [`Body`] stream from an Iterator of chunks.
+    /// Each item emitted will be written as a separated chunk on chunked encoded requests or
+    /// responses.
     #[allow(clippy::should_implement_trait)]
     pub fn from_iter<T: Into<Chunk>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
         Body(Some(BodyInner::Iter(Box::new(
@@ -68,6 +95,7 @@ impl Body {
         ))))
     }
 
+    /// Create a [`Body`] stream from an [`Read`], with an optional length.
     pub fn from_reader<T: Into<Option<usize>>>(reader: impl Read + 'static, length: T) -> Self {
         Body(Some(BodyInner::Reader(Box::new(reader), length.into())))
     }

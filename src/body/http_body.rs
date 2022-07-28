@@ -5,20 +5,28 @@ use std::{
 
 use headers::HeaderMap;
 
+/// Trait representing a streaming body
 pub trait HttpBody: Sized {
     type Reader: Read;
     type Chunks: Iterator<Item = Chunk>;
 
+    /// The lenght of a body, when it is known.
     fn len(&self) -> Option<u64>;
 
+    /// Returns if this body is empty.
+    /// Note that unknown sized bodies (such as close delimited or chunked encoded) will never be
+    /// considered to be empty.
     fn is_empty(&self) -> bool {
         matches!(self.len(), Some(0))
     }
 
+    /// Consumes this body and returns a [`Read`].
     fn into_reader(self) -> Self::Reader;
 
+    /// Consumes this body in chunks.
     fn into_chunks(self) -> Self::Chunks;
 
+    /// Consumes this body and returns its bytes.
     fn into_bytes(self) -> io::Result<Vec<u8>> {
         let mut buf = Vec::with_capacity(1024);
         self.into_reader().read_to_end(&mut buf)?;
@@ -131,8 +139,11 @@ impl HttpBody for Vec<u8> {
     }
 }
 
+/// A message of a chunked encoded body.
 pub enum Chunk {
+    /// Data chunk.
     Data(Vec<u8>),
+    /// [Trailers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Trailer) header chunk.
     Trailers(HeaderMap),
 }
 
