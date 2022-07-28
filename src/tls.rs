@@ -16,8 +16,20 @@ impl From<StreamOwned<ServerConnection, TcpStream>> for RustlsConnection {
 }
 
 impl RustlsConnection {
-    pub fn addr(&self) -> Option<SocketAddr> {
-        self.0.lock().ok()?.sock.peer_addr().ok()
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        self.0
+            .lock()
+            .map_err(|_err| io::Error::new(io::ErrorKind::Other, "Failed to aquire lock"))?
+            .sock
+            .peer_addr()
+    }
+
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.0
+            .lock()
+            .map_err(|_err| io::Error::new(io::ErrorKind::Other, "Failed to aquire lock"))?
+            .sock
+            .local_addr()
     }
 }
 

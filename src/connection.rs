@@ -17,12 +17,21 @@ enum ConnectionInner {
 }
 
 impl Connection {
-    pub fn addr(&self) -> Option<SocketAddr> {
+    pub fn peer_addr(&self) -> Option<SocketAddr> {
         match self.0 {
-            ConnectionInner::Tcp(_, addr) => Some(addr),
+            ConnectionInner::Tcp(ref tcp, _) => tcp.peer_addr().ok(),
             ConnectionInner::Unix(_) => None,
             #[cfg(feature = "rustls")]
-            ConnectionInner::Rustls(ref tls) => tls.addr(),
+            ConnectionInner::Rustls(ref tls) => tls.peer_addr().ok(),
+        }
+    }
+
+    pub fn local_addr(&self) -> Option<SocketAddr> {
+        match self.0 {
+            ConnectionInner::Tcp(ref tcp, _) => tcp.local_addr().ok(),
+            ConnectionInner::Unix(_) => None,
+            #[cfg(feature = "rustls")]
+            ConnectionInner::Rustls(ref tls) => tls.local_addr().ok(),
         }
     }
 }
