@@ -13,7 +13,7 @@ impl App for UploadHandler {
     type Body = &'static str;
     type Error = Infallible;
 
-    fn handle(&self, _req: Request<Body>) -> Result<http::Response<&'static str>, Infallible> {
+    fn handle(&self, _req: Request<Body>) -> Result<http::Response<Self::Body>, Self::Error> {
         Ok(Response::builder()
             .status(StatusCode::OK)
             .body("Thanks for the info!")
