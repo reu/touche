@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 pub mod body;
 mod connection;
 mod read_queue;
