@@ -24,7 +24,7 @@ pub use server::Server;
 pub type Request = http::Request<Body>;
 pub type Response = http::Response<Body>;
 
-pub trait App: Clone {
+pub trait App {
     type Body: HttpBody;
     type Error: Into<Box<dyn Error + Send + Sync>>;
 
