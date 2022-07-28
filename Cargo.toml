@@ -13,10 +13,10 @@ headers = "0.3.7"
 http = "0.2.8"
 httparse = "1.7.1"
 thiserror = "1.0.31"
+threadpool = "1.8.1"
 
 [dev-dependencies]
 base64 = "0.13.0"
 flate2 = "1.0.24"
 indoc = "1.0.6"
 md5 = "0.7.0"
-threadpool = "1.8.1"

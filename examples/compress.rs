@@ -1,8 +1,6 @@
-use std::{env, net::TcpListener};
-
 use http::{Response, StatusCode};
-use threadpool::ThreadPool;
 use touche::body::{ChunkIterator, HttpBody};
+use touche::Server;
 
 use flate2::read::GzEncoder;
 use flate2::Compression;
@@ -31,28 +29,11 @@ where
 }
 
 fn main() -> std::io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:4444")?;
-
-    let threads = match env::var("THREADS") {
-        Ok(threads) => threads.parse::<usize>().expect("Invalid THREADS value"),
-        Err(_) => 100,
-    };
-
-    let pool = ThreadPool::new(threads);
-
-    for stream in listener.incoming() {
-        let stream = stream?;
-        pool.execute(move || {
-            touche::serve(stream, |_req| {
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .header("content-type", "text/plain")
-                    .header("content-encoding", "gzip")
-                    .body(Compressed(include_bytes!("./compress.rs").as_ref()))
-            })
-            .ok();
-        });
-    }
-
-    Ok(())
+    Server::bind("0.0.0.0:4444").serve(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "text/plain")
+            .header("content-encoding", "gzip")
+            .body(Compressed(include_bytes!("./compress.rs").as_ref()))
+    })
 }

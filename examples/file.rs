@@ -1,21 +1,16 @@
-use std::{error::Error, fs, net::TcpListener};
+use std::{fs, io};
 
-use http::{Response, StatusCode};
-use touche::Body;
+use http::{Request, Response, StatusCode};
+use touche::{Body, Server};
 
 fn main() -> std::io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:4444")?;
-
-    for stream in listener.incoming() {
-        touche::serve(stream?, |_req| {
-            let file = fs::File::open("./examples/file.rs")?;
-            Ok::<_, Box<dyn Error + Send + Sync>>(
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .body(Body::try_from(file)?)?,
-            )
-        })?;
-    }
-
-    Ok(())
+    Server::bind("0.0.0.0:4444").serve(|_req: Request<_>| {
+        let file = fs::File::open("./examples/file.rs")?;
+        Ok::<_, io::Error>(
+            Response::builder()
+                .status(StatusCode::OK)
+                .body(Body::try_from(file)?)
+                .unwrap(),
+        )
+    })
 }

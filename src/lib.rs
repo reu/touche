@@ -3,6 +3,7 @@ pub mod connection;
 mod read_queue;
 pub mod request;
 pub mod response;
+pub mod server;
 pub mod upgrade;
 
 use std::{
@@ -18,11 +19,12 @@ use http::{StatusCode, Version};
 use read_queue::ReadQueue;
 use request::ParseError;
 use response::Outcome;
+pub use server::Server;
 
 pub type Request = http::Request<Body>;
 pub type Response = http::Response<Body>;
 
-pub trait Handler<Body, Err>
+pub trait Handler<Body, Err>: Clone
 where
     Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
@@ -38,6 +40,7 @@ impl<F, Body, Err> Handler<Body, Err> for F
 where
     F: Fn(Request) -> Result<http::Response<Body>, Err>,
     F: Sync + Send,
+    F: Clone,
     Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {

@@ -1,31 +1,25 @@
-use std::{error::Error, net::TcpListener, sync::mpsc, thread, time::Duration};
+use std::{error::Error, thread, time::Duration};
 
 use http::{Response, StatusCode};
-use touche::Body;
+use touche::{Body, Server};
 
 fn main() -> std::io::Result<()> {
-    let listener = TcpListener::bind("0.0.0.0:4444")?;
+    Server::bind("0.0.0.0:4444").serve(|_req| {
+        let (channel, body) = Body::channel();
 
-    for stream in listener.incoming() {
-        touche::serve(stream?, |_req| {
-            let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            channel.send("chunk1")?;
+            thread::sleep(Duration::from_secs(1));
+            channel.send("chunk2")?;
+            thread::sleep(Duration::from_secs(1));
+            channel.send("chunk3")?;
+            Ok::<_, Box<dyn Error + Send + Sync>>(())
+        });
 
-            thread::spawn(move || {
-                tx.send("chunk1")?;
-                thread::sleep(Duration::from_secs(1));
-                tx.send("chunk2")?;
-                thread::sleep(Duration::from_secs(1));
-                tx.send("chunk3")?;
-                Ok::<_, Box<dyn Error + Send + Sync>>(())
-            });
-
-            Response::builder()
-                .status(StatusCode::OK)
-                // Disable buffering on Chrome
-                .header("X-Content-Type-Options", "nosniff")
-                .body(Body::from_iter(rx))
-        })?;
-    }
-
-    Ok(())
+        Response::builder()
+            .status(StatusCode::OK)
+            // Disable buffering on Chrome
+            .header("X-Content-Type-Options", "nosniff")
+            .body(body)
+    })
 }
