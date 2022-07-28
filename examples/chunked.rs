@@ -1,7 +1,6 @@
 use std::{error::Error, thread, time::Duration};
 
-use http::{Response, StatusCode};
-use touche::{Body, Server};
+use touche::{Body, Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
     Server::bind("0.0.0.0:4444").serve(|_req| {

@@ -1,7 +1,6 @@
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-use http::{header, Response, StatusCode};
-use touche::{upgrade::Upgrade, Connection, Server};
+use touche::{header, upgrade::Upgrade, Connection, Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
     Server::bind("0.0.0.0:4444").serve(|_req| {

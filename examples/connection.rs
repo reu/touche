@@ -6,8 +6,7 @@ use std::{
     },
 };
 
-use http::{Response, StatusCode};
-use touche::Server;
+use touche::{Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
     let conns = Arc::new(AtomicUsize::new(0));

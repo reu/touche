@@ -1,6 +1,7 @@
-use http::{Response, StatusCode};
-use touche::body::{ChunkIterator, HttpBody};
-use touche::Server;
+use touche::{
+    body::{ChunkIterator, HttpBody},
+    Response, Server, StatusCode,
+};
 
 use flate2::read::GzEncoder;
 use flate2::Compression;

@@ -1,8 +1,7 @@
 use std::{error::Error, thread, time::Duration};
 
-use http::{header::ACCEPT, Request, Response, StatusCode};
 use indoc::indoc;
-use touche::{Body, Server};
+use touche::{header::ACCEPT, Body, Request, Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
     Server::bind("0.0.0.0:4444").serve(|req: Request<_>| {

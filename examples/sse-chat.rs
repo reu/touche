@@ -8,9 +8,8 @@ use std::{
     thread,
 };
 
-use http::{Method, Request, Response, StatusCode};
 use indoc::formatdoc;
-use touche::{body::HttpBody, Body, Server};
+use touche::{body::HttpBody, Body, Method, Request, Response, Server, StatusCode};
 
 #[derive(Debug)]
 enum Event {

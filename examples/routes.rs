@@ -1,5 +1,4 @@
-use http::{Method, Request, Response, StatusCode};
-use touche::{body::HttpBody, Body, Server};
+use touche::{body::HttpBody, Body, Method, Request, Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
     Server::builder()

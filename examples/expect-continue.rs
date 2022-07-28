@@ -1,8 +1,7 @@
 use std::convert::Infallible;
 
 use headers::HeaderMapExt;
-use http::{Request, Response, StatusCode};
-use touche::{App, Body, Server};
+use touche::{App, Body, Request, Response, Server, StatusCode};
 
 #[derive(Clone)]
 struct UploadHandler {

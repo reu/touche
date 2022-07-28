@@ -21,28 +21,30 @@ fn main() -> std::io::Result<()> {
 ```
 
 ## Features
-- HTTP Server (thread per connection design)
+- HTTP Server (thread per connection backed by a thread pool)
 - ~HTTP Client~ (work in progress)
 - Non buffered (streaming) requests and response bodies
-- TLS support
+- HTTP/1.1 pipelining
+- TLS
 - Upgrade connections
 - Trailers headers
-- 100 continue expectations support
+- 100 continue expectation
 - Unix sockets servers
 
 ## Comparison with Hyper
 
-Touché follows some of the same designs as Hyper:
+Touché shares a lot of similarities with Hyper:
 
-- Low level
-- Uses the [http](https://crates.io/crates/http) crate to represent all the HTTP related types
-- Allows fine granded implementations of an HttpBody
-- Fully featured and correct
+- "Low level"
+- Uses the [http crate](https://crates.io/crates/http) to represent HTTP related types
+- Allows fine-grained implementations of streaming HTTP bodies
+- Fast and correct
 
-But also, there are some notable differences:
+But also has some notable differences:
+
 - It is synchronous
-- It uses `Vec<u8>` to represent bytes instead of [Bytes](https://crates.io/crates/bytes)
-- Doesn't support (and probably never will) HTTP 2
+- Uses `Vec<u8>` to represent bytes instead of [Bytes](https://crates.io/crates/bytes)
+- Doesn't support HTTP 2 (and probably never will)
 
 ## Other examples
 
@@ -66,6 +68,26 @@ fn main() -> std::io::Result<()> {
         Response::builder()
             .status(StatusCode::OK)
             .body(body)
+    })
+}
+```
+
+### Streaming files
+
+```rust
+use std::{fs, io};
+
+use touche::{Body, Response, Server, StatusCode};
+
+fn main() -> std::io::Result<()> {
+    Server::bind("0.0.0.0:4444").serve(|_req| {
+        let file = fs::File::open("./examples/file.rs")?;
+        Ok::<_, io::Error>(
+            Response::builder()
+                .status(StatusCode::OK)
+                .body(Body::try_from(file)?)
+                .unwrap(),
+        )
     })
 }
 ```

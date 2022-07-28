@@ -1,7 +1,6 @@
 use std::env;
 
-use http::{Response, StatusCode};
-use touche::Server;
+use touche::{Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
     let threads = match env::var("THREADS") {

@@ -1,7 +1,6 @@
 use std::{fs, os::unix::net::UnixListener};
 
-use http::{Response, StatusCode};
-use touche::Server;
+use touche::{Response, Server, StatusCode};
 
 // Run with: curl --unix-socket examples/unix-socket.socket http://localhost
 fn main() -> std::io::Result<()> {

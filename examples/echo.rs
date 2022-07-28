@@ -1,5 +1,4 @@
-use http::{Request, Response, StatusCode};
-use touche::Server;
+use touche::{Request, Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
     Server::bind("0.0.0.0:4444").serve(|req: Request<_>| {

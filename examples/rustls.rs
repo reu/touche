@@ -11,9 +11,8 @@ fn main() -> std::io::Result<()> {
         sync::Arc,
     };
 
-    use http::{Response, StatusCode};
     use rustls::{ServerConfig, ServerConnection, StreamOwned};
-    use touche::Server;
+    use touche::{Response, Server, StatusCode};
 
     let listener = TcpListener::bind("0.0.0.0:4444")?;
 
