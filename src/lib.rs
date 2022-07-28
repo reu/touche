@@ -27,6 +27,55 @@ pub use server::Server;
 
 type IncomingRequest = Request<Body>;
 
+/// `App` maps requests to responses.
+///
+/// Usually you don't need to manually implement this trait, as its `Fn` implementation might suffice
+/// most of the needs.
+///
+/// ```no_run
+/// # use std::convert::Infallible;
+/// # use touche::{Body, Request, Response, Server, StatusCode};
+/// fn app(req: Request<Body>) -> Result<Response<()>, Infallible> {
+///     Ok(Response::builder().status(StatusCode::OK).body(()).unwrap())
+/// }
+///
+/// fn main() -> std::io::Result<()> {
+///     Server::bind("0.0.0.0:4444").serve(app)
+/// }
+/// ```
+///
+/// You might want to implement this trait if you wish to handle Expect 100-continue.
+/// ```no_run
+/// # use std::convert::Infallible;
+/// # use headers::HeaderMapExt;
+/// # use touche::{App, Body, Request, Response, Server, StatusCode};
+/// #[derive(Clone)]
+/// struct UploadHandler {
+///     max_length: u64,
+/// }
+///
+/// impl App for UploadHandler {
+///     type Body = &'static str;
+///     type Error = Infallible;
+///
+///     fn handle(&self, _req: Request<Body>) -> Result<http::Response<Self::Body>, Self::Error> {
+///         Ok(Response::builder()
+///             .status(StatusCode::OK)
+///             .body("Thanks for the info!")
+///             .unwrap())
+///     }
+///
+///     fn should_continue(&self, req: &Request<Body>) -> StatusCode {
+///         match req.headers().typed_get::<headers::ContentLength>() {
+///             Some(len) if len.0 <= self.max_length => StatusCode::CONTINUE,
+///             _ => StatusCode::EXPECTATION_FAILED,
+///         }
+///     }
+/// }
+/// # fn main() -> std::io::Result<()> {
+/// #     Server::bind("0.0.0.0:4444").serve(UploadHandler { max_length: 1024 })
+/// # }
+/// ```
 pub trait App {
     type Body: HttpBody;
     type Error: Into<Box<dyn Error + Send + Sync>>;
