@@ -98,8 +98,7 @@ impl Iterator for TcpAcceptor {
     type Item = Connection;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (conn, _addr) = self.listener.accept().ok()?;
-        Some(conn.into())
+        Some(self.listener.accept().ok()?.into())
     }
 }
 
