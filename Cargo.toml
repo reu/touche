@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2021"
 authors = ["Rodrigo Navarro <rnavarro@rnavarro.com.br>"]
 license = "MIT"
+description = "Synchronous HTTP library"
 repository = "https://github.com/reu/touche"
 categories = ["network-programming", "web-programming"]
 keywords = ["web", "http", "protocol"]
