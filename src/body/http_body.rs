@@ -6,7 +6,7 @@ use std::{
 use headers::HeaderMap;
 
 pub trait HttpBody: Sized {
-    type BodyReader: Read;
+    type Reader: Read;
     type Chunks: Iterator<Item = Chunk>;
 
     fn len(&self) -> Option<u64>;
@@ -15,7 +15,7 @@ pub trait HttpBody: Sized {
         matches!(self.len(), Some(0))
     }
 
-    fn into_reader(self) -> Self::BodyReader;
+    fn into_reader(self) -> Self::Reader;
 
     fn into_chunks(self) -> Self::Chunks;
 
@@ -27,14 +27,14 @@ pub trait HttpBody: Sized {
 }
 
 impl HttpBody for () {
-    type BodyReader = io::Empty;
+    type Reader = io::Empty;
     type Chunks = iter::Empty<Chunk>;
 
     fn len(&self) -> Option<u64> {
         Some(0)
     }
 
-    fn into_reader(self) -> Self::BodyReader {
+    fn into_reader(self) -> Self::Reader {
         io::empty()
     }
 
@@ -48,14 +48,14 @@ impl HttpBody for () {
 }
 
 impl HttpBody for String {
-    type BodyReader = Cursor<Vec<u8>>;
+    type Reader = Cursor<Vec<u8>>;
     type Chunks = iter::Once<Chunk>;
 
     fn len(&self) -> Option<u64> {
         self.len().try_into().ok()
     }
 
-    fn into_reader(self) -> Self::BodyReader {
+    fn into_reader(self) -> Self::Reader {
         Cursor::new(self.into_bytes())
     }
 
@@ -69,14 +69,14 @@ impl HttpBody for String {
 }
 
 impl HttpBody for &str {
-    type BodyReader = Cursor<Vec<u8>>;
+    type Reader = Cursor<Vec<u8>>;
     type Chunks = iter::Once<Chunk>;
 
     fn len(&self) -> Option<u64> {
         str::len(self).try_into().ok()
     }
 
-    fn into_reader(self) -> Self::BodyReader {
+    fn into_reader(self) -> Self::Reader {
         Cursor::new(self.bytes().collect())
     }
 
@@ -90,14 +90,14 @@ impl HttpBody for &str {
 }
 
 impl HttpBody for &'static [u8] {
-    type BodyReader = &'static [u8];
+    type Reader = &'static [u8];
     type Chunks = iter::Once<Chunk>;
 
     fn len(&self) -> Option<u64> {
         (*self).len().try_into().ok()
     }
 
-    fn into_reader(self) -> Self::BodyReader {
+    fn into_reader(self) -> Self::Reader {
         self
     }
 
@@ -111,14 +111,14 @@ impl HttpBody for &'static [u8] {
 }
 
 impl HttpBody for Vec<u8> {
-    type BodyReader = Cursor<Vec<u8>>;
+    type Reader = Cursor<Vec<u8>>;
     type Chunks = iter::Once<Chunk>;
 
     fn len(&self) -> Option<u64> {
         self.len().try_into().ok()
     }
 
-    fn into_reader(self) -> Self::BodyReader {
+    fn into_reader(self) -> Self::Reader {
         Cursor::new(self)
     }
 

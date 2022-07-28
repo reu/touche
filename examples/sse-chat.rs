@@ -8,9 +8,9 @@ use std::{
     thread,
 };
 
-use http::{Method, Response, StatusCode};
+use http::{Method, Request, Response, StatusCode};
 use indoc::formatdoc;
-use touche::{body::HttpBody, Body, Request, Server};
+use touche::{body::HttpBody, Body, Server};
 
 #[derive(Debug)]
 enum Event {
@@ -25,7 +25,7 @@ fn main() -> std::io::Result<()> {
 
     let users: Users = Arc::new(Mutex::new(HashMap::new()));
 
-    Server::bind("0.0.0.0:4444").serve(move |req: Request| {
+    Server::bind("0.0.0.0:4444").serve(move |req: Request<Body>| {
         let users = users.clone();
 
         match req.uri().path() {

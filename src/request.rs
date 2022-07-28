@@ -22,8 +22,6 @@ pub enum ParseError {
     InvalidTransferEncoding,
     #[error("invalid header")]
     InvalidHeader(#[from] headers::Error),
-    #[error("invalid chunk size")]
-    InvalidChunkSize,
     #[error("failed to parse http request")]
     Unknown,
 }

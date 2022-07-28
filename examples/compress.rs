@@ -10,16 +10,16 @@ struct Compressed<Body: HttpBody>(Body);
 impl<Body> HttpBody for Compressed<Body>
 where
     Body: HttpBody,
-    Body::BodyReader: 'static,
+    Body::Reader: 'static,
 {
-    type BodyReader = GzEncoder<Body::BodyReader>;
+    type Reader = GzEncoder<Body::Reader>;
     type Chunks = ChunkIterator;
 
     fn len(&self) -> Option<u64> {
         None
     }
 
-    fn into_reader(self) -> Self::BodyReader {
+    fn into_reader(self) -> Self::Reader {
         GzEncoder::new(self.0.into_reader(), Compression::fast())
     }
 

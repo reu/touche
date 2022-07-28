@@ -1,8 +1,8 @@
 pub mod body;
-pub mod connection;
+mod connection;
 mod read_queue;
-pub mod request;
-pub mod response;
+mod request;
+mod response;
 pub mod server;
 #[cfg(feature = "rustls")]
 mod tls;
@@ -15,31 +15,30 @@ use std::{
 
 pub use body::Body;
 use body::HttpBody;
-use connection::Connection;
+pub use connection::Connection;
 use headers::{HeaderMapExt, HeaderValue};
-use http::{StatusCode, Version};
+pub use http::{header, Method, Request, Response, StatusCode, Uri, Version};
 use read_queue::ReadQueue;
 use request::ParseError;
 use response::Outcome;
 pub use server::Server;
 
-pub type Request = http::Request<Body>;
-pub type Response = http::Response<Body>;
+type IncomingRequest = Request<Body>;
 
 pub trait App {
     type Body: HttpBody;
     type Error: Into<Box<dyn Error + Send + Sync>>;
 
-    fn handle(&self, request: Request) -> Result<http::Response<Self::Body>, Self::Error>;
+    fn handle(&self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error>;
 
-    fn should_continue(&self, _: &Request) -> StatusCode {
+    fn should_continue(&self, _: &IncomingRequest) -> StatusCode {
         StatusCode::CONTINUE
     }
 }
 
 impl<F, Body, Err> App for F
 where
-    F: Fn(Request) -> Result<http::Response<Body>, Err>,
+    F: Fn(IncomingRequest) -> Result<Response<Body>, Err>,
     F: Sync + Send,
     F: Clone,
     Body: HttpBody,
@@ -48,12 +47,12 @@ where
     type Body = Body;
     type Error = Err;
 
-    fn handle(&self, request: Request) -> Result<http::Response<Self::Body>, Self::Error> {
+    fn handle(&self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error> {
         self(request)
     }
 }
 
-pub fn serve<C: Into<Connection>, H: App>(stream: C, app: H) -> io::Result<()> {
+pub fn serve<C: Into<Connection>, A: App>(stream: C, app: A) -> io::Result<()> {
     let conn = stream.into();
     let mut read_queue = ReadQueue::new(BufReader::new(conn.clone()));
 
@@ -94,12 +93,12 @@ pub fn serve<C: Into<Connection>, H: App>(stream: C, app: H) -> io::Result<()> {
                 if expects_continue {
                     match app.should_continue(&req) {
                         status @ StatusCode::CONTINUE => {
-                            let res = http::Response::builder().status(status).body(()).unwrap();
+                            let res = Response::builder().status(status).body(()).unwrap();
                             response::write_response(res, &mut writer)?;
                             writer.flush()?;
                         }
                         status => {
-                            let res = http::Response::builder().status(status).body(()).unwrap();
+                            let res = Response::builder().status(status).body(()).unwrap();
                             response::write_response(res, &mut writer)?;
                             writer.flush()?;
                             continue;

@@ -14,10 +14,10 @@ pub struct Server<'a> {
 }
 
 impl<'a> Server<'a> {
-    pub fn serve<Handle>(self, app: Handle) -> io::Result<()>
+    pub fn serve<A>(self, app: A) -> io::Result<()>
     where
-        Handle: App,
-        Handle: Send + Clone + 'static,
+        A: App,
+        A: Send + Clone + 'static,
     {
         for conn in self.incoming {
             let app = app.clone();
@@ -29,10 +29,10 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
-    pub fn serve_connection<Conn>(self, app: Conn) -> io::Result<()>
+    pub fn serve_connection<C>(self, app: C) -> io::Result<()>
     where
-        Conn: ConnectionHandler,
-        Conn: Send + Clone + 'static,
+        C: ConnectionHandler,
+        C: Send + Clone + 'static,
     {
         for conn in self.incoming {
             let app = app.clone();

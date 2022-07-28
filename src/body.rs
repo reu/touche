@@ -74,7 +74,7 @@ impl Body {
 }
 
 impl HttpBody for Body {
-    type BodyReader = BodyReader;
+    type Reader = BodyReader;
     type Chunks = ChunkIterator;
 
     fn len(&self) -> Option<u64> {
@@ -88,7 +88,7 @@ impl HttpBody for Body {
         }
     }
 
-    fn into_reader(mut self) -> Self::BodyReader {
+    fn into_reader(mut self) -> Self::Reader {
         match self.0.take().unwrap() {
             BodyInner::Empty => BodyReader(BodyReaderInner::Buffered(Cursor::new(Vec::new()))),
             BodyInner::Buffered(bytes) => BodyReader(BodyReaderInner::Buffered(Cursor::new(bytes))),
