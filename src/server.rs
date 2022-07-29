@@ -1,7 +1,7 @@
 //! HTTP Server
 //!
-//! The [`Server`] is responsible to read and parse a [`http::Request`], and then execute a [`App`] to generate
-//! a [`http::Response`].
+//! The [`Server`] is responsible to read and parse a [`http::Request`], and then execute a [`Service`]
+//! to generate a [`http::Response`].
 //!
 //! The implementation follows a simple thead per connection model, backed by a thread pool.
 //!
@@ -28,7 +28,7 @@ use std::{
 
 use threadpool::ThreadPool;
 
-use crate::{serve, App, Connection};
+use crate::{serve, Connection, Service};
 
 /// A listening HTTP server that accepts HTTP 1 connections.
 pub struct Server<'a> {
@@ -52,7 +52,7 @@ impl<'a> Server<'a> {
         Self::builder().bind(addr)
     }
 
-    /// Serves an [`App`].
+    /// Serves an [`Service`].
     ///
     /// # Example
     /// ```no_run
@@ -65,13 +65,13 @@ impl<'a> Server<'a> {
     /// })
     /// # }
     /// ```
-    pub fn serve<A>(self, app: A) -> io::Result<()>
+    pub fn serve<S>(self, service: S) -> io::Result<()>
     where
-        A: App,
-        A: Send + Clone + 'static,
+        S: Service,
+        S: Send + Clone + 'static,
     {
         for conn in self.incoming {
-            let app = app.clone();
+            let app = service.clone();
             self.thread_pool.execute(move || {
                 serve(conn, app).ok();
             });
@@ -90,7 +90,7 @@ impl<'a> Server<'a> {
     /// # fn main() -> std::io::Result<()> {
     /// Server::builder()
     ///     .bind("0.0.0.0:4444")
-    ///     .serve_connection(|conn: &Connection| {
+    ///     .make_service(|conn: &Connection| {
     ///         println!("New connection arrived: {:?}", conn.peer_addr());
     ///
     ///         Ok::<_, Infallible>(|_req| {
@@ -101,14 +101,14 @@ impl<'a> Server<'a> {
     ///     })
     /// # }
     /// ```
-    pub fn serve_connection<C>(self, app: C) -> io::Result<()>
+    pub fn make_service<M>(self, make_service: M) -> io::Result<()>
     where
-        C: ConnectionHandler,
-        C: Send + Clone + 'static,
+        M: MakeService,
+        M: Send + Clone + 'static,
     {
         for conn in self.incoming {
-            let app = app.clone();
-            if let Ok(handler) = app.handle_connection(&conn) {
+            let app = make_service.clone();
+            if let Ok(handler) = app.call(&conn) {
                 self.thread_pool.execute(move || {
                     serve(conn, handler).ok();
                 });
@@ -214,24 +214,24 @@ impl Iterator for TcpAcceptor {
     }
 }
 
-pub trait ConnectionHandler {
-    type App: App + Send;
+pub trait MakeService {
+    type Service: Service + Send;
     type Error: Into<Box<dyn Error + Send + Sync>>;
 
-    fn handle_connection(&self, conn: &Connection) -> Result<Self::App, Self::Error>;
+    fn call(&self, conn: &Connection) -> Result<Self::Service, Self::Error>;
 }
 
-impl<F, A, Err> ConnectionHandler for F
+impl<F, S, Err> MakeService for F
 where
-    F: Fn(&Connection) -> Result<A, Err>,
+    F: Fn(&Connection) -> Result<S, Err>,
     F: Sync + Send + Clone,
     Err: Into<Box<dyn Error + Send + Sync>>,
-    A: App + Send,
+    S: Service + Send,
 {
-    type App = A;
+    type Service = S;
     type Error = Err;
 
-    fn handle_connection(&self, conn: &Connection) -> Result<Self::App, Self::Error> {
+    fn call(&self, conn: &Connection) -> Result<Self::Service, Self::Error> {
         self(conn)
     }
 }

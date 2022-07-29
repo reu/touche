@@ -1,18 +1,18 @@
 use std::convert::Infallible;
 
 use headers::HeaderMapExt;
-use touche::{App, Body, Request, Response, Server, StatusCode};
+use touche::{Body, Request, Response, Server, Service, StatusCode};
 
 #[derive(Clone)]
-struct UploadHandler {
+struct UploadService {
     max_length: u64,
 }
 
-impl App for UploadHandler {
+impl Service for UploadService {
     type Body = &'static str;
     type Error = Infallible;
 
-    fn handle(&self, _req: Request<Body>) -> Result<http::Response<Self::Body>, Self::Error> {
+    fn call(&self, _req: Request<Body>) -> Result<http::Response<Self::Body>, Self::Error> {
         Ok(Response::builder()
             .status(StatusCode::OK)
             .body("Thanks for the info!")
@@ -28,5 +28,5 @@ impl App for UploadHandler {
 }
 
 fn main() -> std::io::Result<()> {
-    Server::bind("0.0.0.0:4444").serve(UploadHandler { max_length: 1024 })
+    Server::bind("0.0.0.0:4444").serve(UploadService { max_length: 1024 })
 }

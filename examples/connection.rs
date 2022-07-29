@@ -15,7 +15,7 @@ fn main() -> std::io::Result<()> {
         .bind("0.0.0.0:4444")
         // The explicit &_ is necessary due a regression
         // See: https://github.com/rust-lang/rust/issues/81511
-        .serve_connection(move |_conn: &_| {
+        .make_service(move |_conn: &_| {
             let conns = conns.clone();
 
             conns.fetch_add(1, Ordering::Relaxed);

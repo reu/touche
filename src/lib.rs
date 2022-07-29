@@ -48,17 +48,17 @@ type IncomingRequest = Request<Body>;
 /// ```no_run
 /// # use std::convert::Infallible;
 /// # use headers::HeaderMapExt;
-/// # use touche::{App, Body, Request, Response, Server, StatusCode};
+/// # use touche::{Body, Request, Response, Server, Service, StatusCode};
 /// #[derive(Clone)]
-/// struct UploadHandler {
+/// struct UploadService {
 ///     max_length: u64,
 /// }
 ///
-/// impl App for UploadHandler {
+/// impl Service for UploadService {
 ///     type Body = &'static str;
 ///     type Error = Infallible;
 ///
-///     fn handle(&self, _req: Request<Body>) -> Result<http::Response<Self::Body>, Self::Error> {
+///     fn call(&self, _req: Request<Body>) -> Result<http::Response<Self::Body>, Self::Error> {
 ///         Ok(Response::builder()
 ///             .status(StatusCode::OK)
 ///             .body("Thanks for the info!")
@@ -74,21 +74,21 @@ type IncomingRequest = Request<Body>;
 /// }
 ///
 /// fn main() -> std::io::Result<()> {
-///     Server::bind("0.0.0.0:4444").serve(UploadHandler { max_length: 1024 })
+///     Server::bind("0.0.0.0:4444").serve(UploadService { max_length: 1024 })
 /// }
 /// ```
-pub trait App {
+pub trait Service {
     type Body: HttpBody;
     type Error: Into<Box<dyn Error + Send + Sync>>;
 
-    fn handle(&self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error>;
+    fn call(&self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error>;
 
     fn should_continue(&self, _: &IncomingRequest) -> StatusCode {
         StatusCode::CONTINUE
     }
 }
 
-impl<F, Body, Err> App for F
+impl<F, Body, Err> Service for F
 where
     F: Fn(IncomingRequest) -> Result<Response<Body>, Err>,
     F: Sync + Send,
@@ -99,12 +99,12 @@ where
     type Body = Body;
     type Error = Err;
 
-    fn handle(&self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error> {
+    fn call(&self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error> {
         self(request)
     }
 }
 
-pub(crate) fn serve<C: Into<Connection>, A: App>(stream: C, app: A) -> io::Result<()> {
+pub(crate) fn serve<C: Into<Connection>, A: Service>(stream: C, app: A) -> io::Result<()> {
     let conn = stream.into();
     let mut read_queue = ReadQueue::new(BufReader::new(conn.clone()));
 
@@ -159,7 +159,7 @@ pub(crate) fn serve<C: Into<Connection>, A: App>(stream: C, app: A) -> io::Resul
                 }
 
                 let mut res = app
-                    .handle(req)
+                    .call(req)
                     .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
 
                 *res.version_mut() = version;
