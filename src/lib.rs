@@ -27,7 +27,7 @@ pub use server::Server;
 
 type IncomingRequest = Request<Body>;
 
-/// `App` maps requests to responses.
+/// Maps [`Request`]s to [`Response`]s.
 ///
 /// Usually you don't need to manually implement this trait, as its `Fn` implementation might suffice
 /// most of the needs.
@@ -72,9 +72,10 @@ type IncomingRequest = Request<Body>;
 ///         }
 ///     }
 /// }
-/// # fn main() -> std::io::Result<()> {
-/// #     Server::bind("0.0.0.0:4444").serve(UploadHandler { max_length: 1024 })
-/// # }
+///
+/// fn main() -> std::io::Result<()> {
+///     Server::bind("0.0.0.0:4444").serve(UploadHandler { max_length: 1024 })
+/// }
 /// ```
 pub trait App {
     type Body: HttpBody;
@@ -173,6 +174,8 @@ pub(crate) fn serve<C: Into<Connection>, A: App>(stream: C, app: A) -> io::Resul
                     Outcome::KeepAlive => writer.flush()?,
                     Outcome::Close => break,
                     Outcome::Upgrade(upgrade) => {
+                        drop(reader);
+                        drop(read_queue);
                         upgrade.handler.handle(writer.into_inner()?);
                         break;
                     }

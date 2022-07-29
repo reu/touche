@@ -7,6 +7,7 @@ use std::{
 #[cfg(feature = "rustls")]
 use crate::tls::RustlsConnection;
 
+/// Abstracts away the several types of streams where HTTP can be deployed.
 pub struct Connection(ConnectionInner);
 
 enum ConnectionInner {

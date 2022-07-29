@@ -28,7 +28,7 @@ use std::{
 
 use threadpool::ThreadPool;
 
-use crate::{connection::Connection, serve, App};
+use crate::{serve, App, Connection};
 
 /// A listening HTTP server that accepts HTTP 1 connections.
 pub struct Server<'a> {
@@ -176,7 +176,7 @@ impl ServerBuilder {
     /// # fn main() -> std::io::Result<()> {
     /// let listener = UnixListener::bind("touche.socket")?;
     ///
-    /// // Converting the Unix socket to a compatible `Connection`
+    /// // Converting the Unix socket to a compatible [`Connection`]
     /// let connections = listener
     ///     .incoming()
     ///     .filter_map(|conn| conn.ok())
