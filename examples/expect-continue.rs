@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
 use headers::HeaderMapExt;
-use touche::{Body, Request, Response, Server, Service, StatusCode};
+use touche::{server::Service, Body, Request, Response, Server, StatusCode};
 
 #[derive(Clone)]
 struct UploadService {
