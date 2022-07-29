@@ -9,6 +9,15 @@ use rustls::{ServerConnection, StreamOwned};
 #[derive(Clone)]
 pub struct RustlsConnection(Arc<Mutex<StreamOwned<ServerConnection, TcpStream>>>);
 
+impl RustlsConnection {
+    pub(crate) fn into_inner(self) -> Result<StreamOwned<ServerConnection, TcpStream>, Self> {
+        match Arc::try_unwrap(self.0) {
+            Ok(conn) => Ok(conn.into_inner().unwrap()),
+            Err(err) => Err(Self(err)),
+        }
+    }
+}
+
 impl From<StreamOwned<ServerConnection, TcpStream>> for RustlsConnection {
     fn from(tls: StreamOwned<ServerConnection, TcpStream>) -> Self {
         RustlsConnection(Arc::new(Mutex::new(tls)))

@@ -1,4 +1,5 @@
 use std::{
+    any::{Any, TypeId},
     io::{self, Read, Write},
     net::{SocketAddr, TcpStream},
     os::unix::net::UnixStream,
@@ -33,6 +34,50 @@ impl Connection {
             ConnectionInner::Unix(_) => None,
             #[cfg(feature = "rustls")]
             ConnectionInner::Rustls(ref tls) => tls.local_addr().ok(),
+        }
+    }
+
+    /// Attempts to downcast the [`Connection`] into the underling stream.
+    /// On error returns the [`Connection`] back.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use std::net::{TcpListener, TcpStream};
+    /// # use touche::Connection;
+    /// # fn main() -> std::io::Result<()> {
+    /// # let listener = TcpListener::bind("0.0.0.0:4444")?;
+    /// # let connection = Connection::from(listener.accept()?);
+    /// if let Ok(tcp) = connection.downcast::<TcpStream>() {
+    ///     println!("Connection is a TcpStream");
+    /// } else {
+    ///     println!("Connection is not a TcpStream");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn downcast<T: Any>(self) -> Result<T, Self> {
+        match self.0 {
+            ConnectionInner::Tcp(tcp) if Any::type_id(&tcp) == TypeId::of::<T>() => {
+                let tcp = Box::new(tcp) as Box<dyn Any>;
+                Ok(tcp.downcast().map(|tcp| *tcp).unwrap())
+            }
+
+            ConnectionInner::Unix(unix) if Any::type_id(&unix) == TypeId::of::<T>() => {
+                let unix = Box::new(unix) as Box<dyn Any>;
+                Ok(unix.downcast().map(|unix| *unix).unwrap())
+            }
+
+            #[cfg(feature = "rustls")]
+            ConnectionInner::Rustls(tls) => match tls.into_inner() {
+                Ok(tls) if Any::type_id(&tls) == TypeId::of::<T>() => {
+                    let tls = Box::new(tls) as Box<dyn Any>;
+                    Ok(tls.downcast().map(|tls| *tls).unwrap())
+                }
+                Ok(tls) => Err(Self(ConnectionInner::Rustls(tls.into()))),
+                Err(tls) => Err(Self(ConnectionInner::Rustls(tls))),
+            },
+
+            conn => Err(Self(conn)),
         }
     }
 }
