@@ -40,7 +40,7 @@ use crate::{
 
 type IncomingRequest = Request<Body>;
 
-/// Maps [`Request`]s to [`Response`]s.
+/// Maps [`Requests`](http::Request) to [`Responses`](http::Response).
 ///
 /// Usually you don't need to manually implement this trait, as its `Fn` implementation might suffice
 /// most of the needs.

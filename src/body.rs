@@ -1,16 +1,13 @@
-//! Streaming bodies for Requests and Responses.
+//! Streaming bodies for [`Requests`](http::Request) and [`Responses`](http::Response).
 //!
 //! Bodies are not buffered by default, so applications don't use memory they don't need.
 //!
-//! As [hyper](https://docs.rs/hyper) there are two pieces to this:
+//! As [hyper](https://docs.rs/hyper) this module has two important pieces:
 //!
-//! - **The [`HttpBody`](HttpBody) trait** describes all possible bodies.
-//!   This allows any body type that implements `HttpBody`, allowing
-//!   applications to have fine-grained control over their streaming.
-//! - **The [`Body`](Body) concrete type**, which is an implementation of
-//!   `HttpBody`, and returned by touche as a "receive stream". It is also a decent default
-//!   implementation if you don't have very custom needs of your send streams.
-
+//! - The [`HttpBody`] trait, which describes all possible bodies. This allows custom
+//!   implementation if you need fine-grained control on how to stream and chunk the data.
+//! - The [`Body`] concrete type, which is an implementation of [`HttpBody`] returned by touche
+//!   as a "receive stream". It is also a decent default implementation for your send streams.
 use std::{
     error::Error,
     fs::File,
