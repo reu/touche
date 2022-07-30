@@ -4,7 +4,7 @@ Touché is a low level but fully featured HTTP 1.0/1.1 library.
 
 It tries to mimic [hyper](https://crates.io/crates/hyper), but with a synchronous API.
 
-For now only the server API is implemented. HTTP client is planned but is sitll a work in progress.
+For now only the server API is implemented.
 
 ## Hello world
 
@@ -21,8 +21,7 @@ fn main() -> std::io::Result<()> {
 ```
 
 ## Features
-- HTTP Server (thread per connection backed by a thread pool)
-- ~HTTP Client~ (work in progress)
+- HTTP Server (thread per connection model, backed by a thread pool)
 - Non buffered (streaming) requests and response bodies
 - HTTP/1.1 pipelining
 - TLS
@@ -38,9 +37,8 @@ Touché shares a lot of similarities with Hyper:
 - "Low level"
 - Uses the [http crate](https://crates.io/crates/http) to represent HTTP related types
 - Allows fine-grained implementations of streaming HTTP bodies
-- Fast and correct
 
-But also has some notable differences:
+But also has some key differences:
 
 - It is synchronous
 - Uses `Vec<u8>` to represent bytes instead of [Bytes](https://crates.io/crates/bytes)
@@ -167,7 +165,36 @@ fn main() -> std::io::Result<()> {
 }
 ```
 
-You can find a other examples in the [examples directory](https://github.com/reu/touche/tree/master/examples).
+You can find other examples in the [examples directory](https://github.com/reu/touche/tree/master/examples).
+
+## Performance
+
+While the primary focus is having a simple and readable implementation, the library
+shows some decent performance.
+
+A simple benchmark of the hello_world.rs example gives the following result:
+
+```sh
+$ cat /proc/cpuinfo | grep name | uniq
+model name      : AMD Ryzen 5 5600G with Radeon Graphics
+
+$ wrk --latency -t6 -c 200 -d 10s http://localhost:4444
+Running 10s test @ http://localhost:4444
+  6 threads and 200 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   153.37us  391.20us  19.41ms   99.37%
+    Req/Sec    76.11k    13.21k   89.14k    82.67%
+  Latency Distribution
+     50%  126.00us
+     75%  160.00us
+     90%  209.00us
+     99%  360.00us
+  4544074 requests in 10.01s, 225.35MB read
+Requests/sec: 454157.11
+Transfer/sec:     22.52MB
+```
+
+The result is on par with Hyper's hello world running on the same machine.
 
 ## Disclaimer
 
