@@ -34,9 +34,9 @@ enum BodyInner {
     Reader(Box<dyn Read>, Option<usize>),
 }
 
+/// The sender half of a channel, used to stream chunks from another thread.
 pub struct BodyChannel(Sender<Chunk>);
 
-/// The sender half of a channel, used to stream chunks from another thread.
 impl BodyChannel {
     /// Send a chunk of bytes to this body.
     pub fn send<T: Into<Vec<u8>>>(&self, data: T) -> Result<(), SendError<Chunk>> {
@@ -69,12 +69,12 @@ impl BodyChannel {
 }
 
 impl Body {
-    /// Create an empty [`Body`] stream.
+    /// Creates an empty [`Body`] stream.
     pub fn empty() -> Self {
         Body(Some(BodyInner::Empty))
     }
 
-    /// Create a [`Body`] stream with an associated sender half.
+    /// Creates a [`Body`] stream with an associated sender half.
     /// Useful when wanting to stream chunks from another thread.
     pub fn channel() -> (BodyChannel, Self) {
         let (tx, rx) = mpsc::channel();
@@ -82,7 +82,7 @@ impl Body {
         (BodyChannel(tx), body)
     }
 
-    /// Create a [`Body`] stream from an Iterator of chunks.
+    /// Creates a [`Body`] stream from an Iterator of chunks.
     /// Each item emitted will be written as a separated chunk on chunked encoded requests or
     /// responses.
     #[allow(clippy::should_implement_trait)]
@@ -92,7 +92,7 @@ impl Body {
         ))))
     }
 
-    /// Create a [`Body`] stream from an [`Read`], with an optional length.
+    /// Creates a [`Body`] stream from an [`Read`], with an optional length.
     pub fn from_reader<T: Into<Option<usize>>>(reader: impl Read + 'static, length: T) -> Self {
         Body(Some(BodyInner::Reader(Box::new(reader), length.into())))
     }
@@ -221,9 +221,16 @@ impl TryFrom<File> for Body {
     }
 }
 
+/// Wraps a body and turns into a [`Read`].
 pub struct BodyReader(BodyReaderInner);
 
 impl BodyReader {
+    /// Creates a [`BodyReader`] from an [`Read`]
+    pub fn from_reader(reader: impl Read + 'static) -> Self {
+        BodyReader(BodyReaderInner::Reader(Box::new(reader)))
+    }
+
+    /// Creates a [`BodyReader`] from an [`Iterator`]
     #[allow(clippy::should_implement_trait)]
     pub fn from_iter(iter: impl IntoIterator<Item = Vec<u8>> + 'static) -> Self {
         let mut iter = iter.into_iter();
@@ -259,6 +266,34 @@ impl Read for BodyReader {
     }
 }
 
+impl From<Vec<u8>> for BodyReader {
+    fn from(buf: Vec<u8>) -> Self {
+        Self(BodyReaderInner::Buffered(Cursor::new(buf)))
+    }
+}
+
+impl From<Body> for BodyReader {
+    fn from(mut body: Body) -> Self {
+        match body.0.take().unwrap() {
+            BodyInner::Empty => Vec::new().into(),
+            BodyInner::Buffered(bytes) => bytes.into(),
+            BodyInner::Iter(chunks) => {
+                let mut chunks = chunks.filter_map(|chunk| match chunk {
+                    Chunk::Data(data) => Some(data),
+                    Chunk::Trailers(_) => None,
+                });
+                let cursor = chunks.next().map(Cursor::new);
+                BodyReader(BodyReaderInner::Iter(Box::new(chunks), cursor))
+            }
+            BodyInner::Reader(stream, Some(len)) => {
+                BodyReader(BodyReaderInner::Reader(Box::new(stream.take(len as u64))))
+            }
+            BodyInner::Reader(stream, None) => BodyReader(BodyReaderInner::Reader(stream)),
+        }
+    }
+}
+
+/// Iterate bodies in chunks
 pub struct ChunkIterator(Option<ChunkIteratorInner>);
 
 impl ChunkIterator {
