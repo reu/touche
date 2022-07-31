@@ -24,6 +24,7 @@ use std::{
     error::Error,
     io::{self, BufReader, BufWriter, Write},
     net::{TcpListener, ToSocketAddrs},
+    time::Duration,
 };
 
 use headers::{HeaderMapExt, HeaderValue};
@@ -208,11 +209,15 @@ impl<'a> Server<'a> {
 
 pub struct ServerBuilder {
     max_threads: usize,
+    read_timeout: Option<Duration>,
 }
 
 impl Default for ServerBuilder {
     fn default() -> Self {
-        Self { max_threads: 512 }
+        Self {
+            max_threads: 512,
+            read_timeout: None,
+        }
     }
 }
 
@@ -234,7 +239,74 @@ impl ServerBuilder {
     /// # }
     /// ```
     pub fn max_threads(self, max_threads: usize) -> Self {
-        Self { max_threads }
+        Self {
+            max_threads,
+            ..self
+        }
+    }
+
+    /// Sets the time limit that connections will be kept alive while no data is received.
+    /// Defaults to no time limit at all.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use std::time::Duration;
+    /// # use touche::{Response, Server, StatusCode};
+    /// # fn main() -> std::io::Result<()> {
+    /// Server::builder()
+    ///     // Close the connection if no data arrives in 10 seconds
+    ///     .read_timeout(Duration::from_secs(10))
+    ///     .bind("0.0.0.0:4444")
+    ///     .serve(|_req| {
+    ///         Response::builder()
+    ///             .status(StatusCode::OK)
+    ///             .body(())
+    ///     })
+    /// # }
+    /// ```
+    ///
+    /// # Example with upgraded connection
+    ///
+    /// Be careful when using this option with upgraded connections, as the underling protocol may
+    /// need some different timeout configurations. In that case, you can use the
+    /// [`Connection::set_read_timeout`] to set per connection configuration.
+    ///
+    /// ```no_run
+    /// # use std::{
+    /// #     io::{Read, Write},
+    /// #     time::Duration,
+    /// # };
+    /// # use touche::{header, upgrade::Upgrade, Connection, Response, Server, StatusCode};
+    /// fn main() -> std::io::Result<()> {
+    ///     Server::builder()
+    ///         // Sets the server read timeout to 10 seconds
+    ///         .read_timeout(Duration::from_secs(10))
+    ///         .bind("0.0.0.0:4444")
+    ///         .serve(|_req| {
+    ///             Response::builder()
+    ///                 .status(StatusCode::SWITCHING_PROTOCOLS)
+    ///                 .header(header::UPGRADE, "echo")
+    ///                 .upgrade(|mut conn: Connection| {
+    ///                     // Don't timeout on the upgraded connection
+    ///                     conn.set_read_timeout(None).unwrap();
+    ///
+    ///                     loop {
+    ///                         let mut buf = [0; 1024];
+    ///                         match conn.read(&mut buf) {
+    ///                             Ok(n) if n > 0 => conn.write(&buf[0..n]).unwrap(),
+    ///                             _ => break,
+    ///                         };
+    ///                     }
+    ///                 })
+    ///                 .body(())
+    ///         })
+    /// }
+    /// ```
+    pub fn read_timeout<T: Into<Option<Duration>>>(self, timeout: T) -> Self {
+        Self {
+            read_timeout: timeout.into(),
+            ..self
+        }
     }
 
     /// Binds the [`Server`] to the given `addr`.
@@ -284,7 +356,10 @@ impl ServerBuilder {
     ) -> Server<'a> {
         Server {
             thread_pool: ThreadPool::new(self.max_threads),
-            incoming: Box::new(conns.into_iter()),
+            incoming: Box::new(conns.into_iter().filter_map(move |conn| {
+                conn.set_read_timeout(self.read_timeout).ok()?;
+                Some(conn)
+            })),
         }
     }
 }

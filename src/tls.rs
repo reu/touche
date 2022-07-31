@@ -2,6 +2,7 @@ use std::{
     io::{self, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use rustls::{ServerConnection, StreamOwned};
@@ -10,6 +11,12 @@ use rustls::{ServerConnection, StreamOwned};
 pub struct RustlsConnection(Arc<Mutex<StreamOwned<ServerConnection, TcpStream>>>);
 
 impl RustlsConnection {
+    pub(crate) fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        let stream = self.0.lock().unwrap();
+        stream.get_ref().set_read_timeout(timeout)?;
+        Ok(())
+    }
+
     pub(crate) fn into_inner(self) -> Result<StreamOwned<ServerConnection, TcpStream>, Self> {
         match Arc::try_unwrap(self.0) {
             Ok(conn) => Ok(conn.into_inner().unwrap()),

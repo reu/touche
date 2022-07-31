@@ -3,6 +3,7 @@ use std::{
     io::{self, Read, Write},
     net::{SocketAddr, TcpStream},
     os::unix::net::UnixStream,
+    time::Duration,
 };
 
 #[cfg(feature = "rustls")]
@@ -34,6 +35,15 @@ impl Connection {
             ConnectionInner::Unix(_) => None,
             #[cfg(feature = "rustls")]
             ConnectionInner::Rustls(ref tls) => tls.local_addr().ok(),
+        }
+    }
+
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> Result<(), io::Error> {
+        match self.0 {
+            ConnectionInner::Tcp(ref tcp) => tcp.set_read_timeout(timeout),
+            ConnectionInner::Unix(ref unix) => unix.set_read_timeout(timeout),
+            #[cfg(feature = "rustls")]
+            ConnectionInner::Rustls(ref tls) => tls.set_read_timeout(timeout),
         }
     }
 
