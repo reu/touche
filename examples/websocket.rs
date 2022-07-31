@@ -12,7 +12,7 @@ fn main() -> std::io::Result<()> {
 
             while let Ok(msg) = ws.read_message() {
                 if msg.is_text() {
-                    if let Err(_) = ws.write_message(msg) {
+                    if ws.write_message(msg).is_err() {
                         break;
                     }
                 }

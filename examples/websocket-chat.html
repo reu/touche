@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const socket = new WebSocket("ws://localhost:4444/ws");
+
+        const messages = document.getElementById("messages");
+        socket.addEventListener("message", function (event) {
+          const data = JSON.parse(event.data);
+
+          switch (data.type) {
+            case "user": {
+              const { id: userId } = data;
+              messages.insertAdjacentHTML("beforeend", `<li>${userId} joined</li>`);
+              break;
+            }
+
+            case "message": {
+              const { userId, text } = data;
+              messages.insertAdjacentHTML("beforeend", `<li>${userId}: ${text}</li>`);
+              break;
+            }
+          }
+        });
+
+        const messageForm = document.getElementById("message-form");
+        messageForm.addEventListener("submit", evt => {
+          evt.preventDefault();
+          socket.send(messageForm.message.value);
+          messageForm.message.value = "";
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+    <form id="message-form">
+      <input type="text" name="message">
+      <button type="submit">Send</button>
+    </form>
+
+    <ul id="messages"></ul>
+  </body>
+</html>
