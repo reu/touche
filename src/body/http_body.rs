@@ -28,7 +28,7 @@ pub trait HttpBody: Sized {
 
     /// Consumes this body and returns its bytes.
     fn into_bytes(self) -> io::Result<Vec<u8>> {
-        let mut buf = Vec::with_capacity(1024);
+        let mut buf = Vec::with_capacity(self.len().unwrap_or(1024) as usize);
         self.into_reader().read_to_end(&mut buf)?;
         Ok(buf)
     }
