@@ -10,7 +10,7 @@ pub trait HttpBody: Sized {
     type Reader: Read;
     type Chunks: Iterator<Item = Chunk>;
 
-    /// The lenght of a body, when it is known.
+    /// The length of a body, when it is known.
     fn len(&self) -> Option<u64>;
 
     /// Returns if this body is empty.

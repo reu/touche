@@ -198,7 +198,7 @@ The result is on par with Hyper's hello world running on the same machine.
 
 ## Disclaimer
 
-This library is by no means a critique to Hyper or to async Rust. I **really** love both of then.
+This library is by no means a critique to Hyper or to async Rust. I **really** love both of them.
 
 The main motivation I had to write this library was to be able to introduce Rust to my co-workers
 (which are mainly web developers). A synchronous library is way more beginner friendly than an

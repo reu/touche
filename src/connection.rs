@@ -47,7 +47,7 @@ impl Connection {
         }
     }
 
-    /// Attempts to downcast the [`Connection`] into the underling stream.
+    /// Attempts to downcast the [`Connection`] into the underlying stream.
     /// On error returns the [`Connection`] back.
     ///
     /// # Example

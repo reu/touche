@@ -43,8 +43,8 @@ impl BodyChannel {
         self.0.send(data.into().into())
     }
 
-    /// Send a trailer header. Not that trailers will be buffered, so you are not required to send
-    /// then only after sending all the chunks.
+    /// Send a trailer header. Note that trailers will be buffered, so you are not required to send
+    /// them only after sending all the chunks.
     pub fn send_trailer<K, V>(
         &self,
         header: K,

@@ -3,7 +3,7 @@
 //! The [`Server`] is responsible to read and parse a [`http::Request`], and then execute a [`Service`]
 //! to generate a [`http::Response`].
 //!
-//! The implementation follows a simple thead per connection model, backed by a thread pool.
+//! The implementation follows a simple thread per connection model, backed by a thread pool.
 //!
 //! # Example
 //! ```no_run
