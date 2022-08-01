@@ -28,7 +28,7 @@ use std::{
 };
 
 use headers::{HeaderMapExt, HeaderValue};
-use http::{Request, Response, StatusCode, Version};
+use http::{Method, Request, Response, StatusCode, Version};
 use threadpool::ThreadPool;
 
 use crate::{
@@ -423,6 +423,8 @@ fn serve<C: Into<Connection>, A: Service>(stream: C, app: A) -> io::Result<()> {
 
                 let version = req.version();
 
+                let should_write_body = req.method() != Method::HEAD;
+
                 let demands_close = match version {
                     Version::HTTP_09 => true,
                     Version::HTTP_10 => !asks_for_keep_alive,
@@ -439,12 +441,12 @@ fn serve<C: Into<Connection>, A: Service>(stream: C, app: A) -> io::Result<()> {
                     match app.should_continue(&req) {
                         status @ StatusCode::CONTINUE => {
                             let res = Response::builder().status(status).body(()).unwrap();
-                            response::write_response(res, &mut writer)?;
+                            response::write_response(res, &mut writer, true)?;
                             writer.flush()?;
                         }
                         status => {
                             let res = Response::builder().status(status).body(()).unwrap();
-                            response::write_response(res, &mut writer)?;
+                            response::write_response(res, &mut writer, true)?;
                             writer.flush()?;
                             continue;
                         }
@@ -462,7 +464,7 @@ fn serve<C: Into<Connection>, A: Service>(stream: C, app: A) -> io::Result<()> {
                         .insert("connection", HeaderValue::from_static("close"));
                 }
 
-                match response::write_response(res, &mut writer)? {
+                match response::write_response(res, &mut writer, should_write_body)? {
                     Outcome::KeepAlive if demands_close => break,
                     Outcome::KeepAlive => writer.flush()?,
                     Outcome::Close => break,

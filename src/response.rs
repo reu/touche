@@ -21,6 +21,7 @@ pub(crate) enum Outcome {
 pub(crate) fn write_response<B: HttpBody>(
     res: http::Response<B>,
     stream: &mut impl Write,
+    write_body: bool,
 ) -> io::Result<Outcome> {
     let (
         Parts {
@@ -87,40 +88,42 @@ pub(crate) fn write_response<B: HttpBody>(
 
     stream.write_all(b"\r\n")?;
 
-    match encoding {
-        // Just buffer small bodies
-        Encoding::FixedLength(len) if len < 1024 => {
-            stream.write_all(&body.into_bytes()?)?;
-        }
-        Encoding::FixedLength(_) | Encoding::CloseDelimited => {
-            io::copy(&mut body.into_reader(), stream)?;
-        }
-        Encoding::Chunked => {
-            let mut trailers = HeaderMap::new();
+    if write_body {
+        match encoding {
+            // Just buffer small bodies
+            Encoding::FixedLength(len) if len < 1024 => {
+                stream.write_all(&body.into_bytes()?)?;
+            }
+            Encoding::FixedLength(_) | Encoding::CloseDelimited => {
+                io::copy(&mut body.into_reader(), stream)?;
+            }
+            Encoding::Chunked => {
+                let mut trailers = HeaderMap::new();
 
-            for chunk in body.into_chunks() {
-                match chunk {
-                    Chunk::Data(chunk) => {
-                        stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
-                        stream.write_all(&chunk)?;
-                        stream.write_all(b"\r\n")?;
-                        stream.flush()?;
-                    }
-                    Chunk::Trailers(te) => {
-                        trailers.extend(te);
+                for chunk in body.into_chunks() {
+                    match chunk {
+                        Chunk::Data(chunk) => {
+                            stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
+                            stream.write_all(&chunk)?;
+                            stream.write_all(b"\r\n")?;
+                            stream.flush()?;
+                        }
+                        Chunk::Trailers(te) => {
+                            trailers.extend(te);
+                        }
                     }
                 }
-            }
 
-            stream.write_all(b"0\r\n")?;
-            for (name, val) in trailers.iter() {
-                stream.write_all(
-                    &[format!("{name}: ").as_bytes(), val.as_bytes(), b"\r\n"].concat(),
-                )?;
+                stream.write_all(b"0\r\n")?;
+                for (name, val) in trailers.iter() {
+                    stream.write_all(
+                        &[format!("{name}: ").as_bytes(), val.as_bytes(), b"\r\n"].concat(),
+                    )?;
+                }
+                stream.write_all(b"\r\n")?;
             }
-            stream.write_all(b"\r\n")?;
-        }
-    };
+        };
+    }
 
     let connection = headers.typed_get::<headers::Connection>();
 
@@ -154,7 +157,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
@@ -171,11 +174,28 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
             b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nlol"
+        );
+        assert!(matches!(outcome, Outcome::KeepAlive));
+    }
+
+    #[test]
+    fn allows_to_skip_body_writing() {
+        let res = Response::builder()
+            .status(StatusCode::OK)
+            .body("lol")
+            .unwrap();
+
+        let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let outcome = write_response(res, &mut output, false).unwrap();
+
+        assert_eq!(
+            output.get_ref(),
+            b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\n"
         );
         assert!(matches!(outcome, Outcome::KeepAlive));
     }
@@ -189,7 +209,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        assert!(write_response(res, &mut output).is_err());
+        assert!(write_response(res, &mut output, true).is_err());
     }
 
     #[test]
@@ -204,7 +224,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
@@ -230,7 +250,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         send_thread.join().unwrap();
 
@@ -249,7 +269,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
@@ -266,7 +286,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
@@ -283,7 +303,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
@@ -301,7 +321,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
@@ -326,7 +346,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         send_thread.join().unwrap();
 
@@ -346,7 +366,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert!(matches!(outcome, Outcome::Close));
     }
@@ -359,7 +379,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert!(matches!(outcome, Outcome::KeepAlive));
     }
@@ -373,7 +393,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert!(matches!(outcome, Outcome::Upgrade(_)));
     }
@@ -387,7 +407,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
@@ -406,7 +426,7 @@ mod tests {
             .unwrap();
 
         let mut output: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-        let outcome = write_response(res, &mut output).unwrap();
+        let outcome = write_response(res, &mut output, true).unwrap();
 
         assert_eq!(
             output.get_ref(),
