@@ -173,12 +173,10 @@ impl Drop for Body {
         #[allow(unused_must_use)]
         match self.0.take() {
             Some(BodyInner::Reader(ref mut stream, Some(len))) => {
-                let mut buf = vec![0_u8; len as usize];
-                stream.read_exact(&mut buf);
+                io::copy(&mut stream.take(len as u64), &mut io::sink());
             }
             Some(BodyInner::Reader(ref mut stream, None)) => {
-                let mut buf = Vec::new();
-                stream.read_to_end(&mut buf);
+                io::copy(stream, &mut io::sink());
             }
             _ => {}
         }
