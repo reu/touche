@@ -323,9 +323,17 @@ impl Iterator for ChunkIterator {
                 Some(item)
             }
             ChunkIteratorInner::Reader(mut reader, Some(len)) => {
-                let mut buf = vec![0_u8; len];
-                reader.read_exact(&mut buf).ok()?;
-                Some(buf.into())
+                let mut buf = [0_u8; 8 * 1024];
+                match reader.read(&mut buf).ok()? {
+                    0 => None,
+                    bytes => {
+                        self.0 = match len.checked_sub(bytes) {
+                            r @ Some(rem) if rem > 0 => Some(ChunkIteratorInner::Reader(reader, r)),
+                            _ => None,
+                        };
+                        Some(buf[0..bytes].to_vec().into())
+                    }
+                }
             }
             ChunkIteratorInner::Reader(mut reader, None) => {
                 let mut buf = [0_u8; 8 * 1024];
