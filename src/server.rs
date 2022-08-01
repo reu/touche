@@ -245,7 +245,7 @@ impl ServerBuilder {
         }
     }
 
-    /// Sets the time limit that connections will be kept alive while no data is received.
+    /// Sets the time limit that connections will be kept alive when no data is received.
     /// Defaults to no time limit at all.
     ///
     /// # Example
@@ -267,7 +267,7 @@ impl ServerBuilder {
     ///
     /// # Example with upgraded connection
     ///
-    /// Be careful when using this option with upgraded connections, as the underling protocol may
+    /// Be careful when using this option with upgraded connections, as the underlying protocol may
     /// need some different timeout configurations. In that case, you can use the
     /// [`Connection::set_read_timeout`] to set per connection configuration.
     ///
@@ -277,30 +277,30 @@ impl ServerBuilder {
     /// #     time::Duration,
     /// # };
     /// # use touche::{header, upgrade::Upgrade, Connection, Response, Server, StatusCode};
-    /// fn main() -> std::io::Result<()> {
-    ///     Server::builder()
-    ///         // Sets the server read timeout to 10 seconds
-    ///         .read_timeout(Duration::from_secs(10))
-    ///         .bind("0.0.0.0:4444")
-    ///         .serve(|_req| {
-    ///             Response::builder()
-    ///                 .status(StatusCode::SWITCHING_PROTOCOLS)
-    ///                 .header(header::UPGRADE, "echo")
-    ///                 .upgrade(|mut conn: Connection| {
-    ///                     // Don't timeout on the upgraded connection
-    ///                     conn.set_read_timeout(None).unwrap();
+    /// # fn main() -> std::io::Result<()> {
+    /// Server::builder()
+    ///     // Sets the server read timeout to 10 seconds
+    ///     .read_timeout(Duration::from_secs(10))
+    ///     .bind("0.0.0.0:4444")
+    ///     .serve(|_req| {
+    ///         Response::builder()
+    ///             .status(StatusCode::SWITCHING_PROTOCOLS)
+    ///             .header(header::UPGRADE, "echo")
+    ///             .upgrade(|mut conn: Connection| {
+    ///                 // Don't timeout on the upgraded connection
+    ///                 conn.set_read_timeout(None).unwrap();
     ///
-    ///                     loop {
-    ///                         let mut buf = [0; 1024];
-    ///                         match conn.read(&mut buf) {
-    ///                             Ok(n) if n > 0 => conn.write(&buf[0..n]).unwrap(),
-    ///                             _ => break,
-    ///                         };
-    ///                     }
-    ///                 })
-    ///                 .body(())
-    ///         })
-    /// }
+    ///                 loop {
+    ///                     let mut buf = [0; 1024];
+    ///                     match conn.read(&mut buf) {
+    ///                         Ok(n) if n > 0 => conn.write(&buf[0..n]).unwrap(),
+    ///                         _ => break,
+    ///                     };
+    ///                 }
+    ///             })
+    ///             .body(())
+    ///     })
+    /// # }
     /// ```
     pub fn read_timeout<T: Into<Option<Duration>>>(self, timeout: T) -> Self {
         Self {
@@ -327,8 +327,7 @@ impl ServerBuilder {
 
     /// Accepts connections from some [`Iterator`].
     ///
-    /// # Example
-    /// Running the server on a Unix socket
+    /// # Example running the server on a Unix socket
     /// ```no_run
     /// # use std::os::unix::net::UnixListener;
     /// # use touche::{Request, Response, Server, StatusCode};
