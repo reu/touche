@@ -10,8 +10,10 @@ use std::{
 use crate::tls::RustlsConnection;
 
 /// Abstracts away the several types of streams where HTTP can be deployed.
+#[derive(Debug)]
 pub struct Connection(ConnectionInner);
 
+#[derive(Debug)]
 enum ConnectionInner {
     Tcp(TcpStream),
     Unix(UnixStream),

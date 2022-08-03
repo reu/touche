@@ -7,7 +7,7 @@ use std::{
 
 use rustls::{ServerConnection, StreamOwned};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RustlsConnection(Arc<Mutex<StreamOwned<ServerConnection, TcpStream>>>);
 
 impl RustlsConnection {
