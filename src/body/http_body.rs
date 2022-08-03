@@ -8,7 +8,7 @@ use headers::HeaderMap;
 /// Trait representing a streaming body
 pub trait HttpBody: Sized {
     type Reader: Read;
-    type Chunks: Iterator<Item = Chunk>;
+    type Chunks: Iterator<Item = io::Result<Chunk>>;
 
     /// The length of a body, when it is known.
     fn len(&self) -> Option<u64>;
@@ -36,7 +36,7 @@ pub trait HttpBody: Sized {
 
 impl HttpBody for () {
     type Reader = io::Empty;
-    type Chunks = iter::Empty<Chunk>;
+    type Chunks = iter::Empty<io::Result<Chunk>>;
 
     fn len(&self) -> Option<u64> {
         Some(0)
@@ -57,7 +57,7 @@ impl HttpBody for () {
 
 impl HttpBody for String {
     type Reader = Cursor<Vec<u8>>;
-    type Chunks = iter::Once<Chunk>;
+    type Chunks = iter::Once<io::Result<Chunk>>;
 
     fn len(&self) -> Option<u64> {
         self.len().try_into().ok()
@@ -72,13 +72,13 @@ impl HttpBody for String {
     }
 
     fn into_chunks(self) -> Self::Chunks {
-        iter::once(self.into_bytes().into())
+        iter::once(Ok(self.into_bytes().into()))
     }
 }
 
 impl HttpBody for &str {
     type Reader = Cursor<Vec<u8>>;
-    type Chunks = iter::Once<Chunk>;
+    type Chunks = iter::Once<io::Result<Chunk>>;
 
     fn len(&self) -> Option<u64> {
         str::len(self).try_into().ok()
@@ -93,13 +93,13 @@ impl HttpBody for &str {
     }
 
     fn into_chunks(self) -> Self::Chunks {
-        iter::once(Chunk::Data(self.bytes().collect()))
+        iter::once(Ok(Chunk::Data(self.bytes().collect())))
     }
 }
 
 impl HttpBody for &'static [u8] {
     type Reader = &'static [u8];
-    type Chunks = iter::Once<Chunk>;
+    type Chunks = iter::Once<io::Result<Chunk>>;
 
     fn len(&self) -> Option<u64> {
         (*self).len().try_into().ok()
@@ -114,13 +114,13 @@ impl HttpBody for &'static [u8] {
     }
 
     fn into_chunks(self) -> Self::Chunks {
-        iter::once(self.to_vec().into())
+        iter::once(Ok(self.to_vec().into()))
     }
 }
 
 impl HttpBody for Vec<u8> {
     type Reader = Cursor<Vec<u8>>;
-    type Chunks = iter::Once<Chunk>;
+    type Chunks = iter::Once<io::Result<Chunk>>;
 
     fn len(&self) -> Option<u64> {
         self.len().try_into().ok()
@@ -135,7 +135,7 @@ impl HttpBody for Vec<u8> {
     }
 
     fn into_chunks(self) -> Self::Chunks {
-        iter::once(self.into())
+        iter::once(Ok(self.into()))
     }
 }
 

@@ -101,7 +101,7 @@ pub(crate) fn write_response<B: HttpBody>(
                 let mut trailers = HeaderMap::new();
 
                 for chunk in body.into_chunks() {
-                    match chunk {
+                    match chunk? {
                         Chunk::Data(chunk) => {
                             stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
                             stream.write_all(&chunk)?;

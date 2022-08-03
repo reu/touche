@@ -12,7 +12,7 @@ use std::{
     error::Error,
     fs::File,
     io::{self, Cursor, Read},
-    sync::mpsc::{self, SendError, Sender},
+    sync::mpsc::{self, Sender},
 };
 
 use headers::{HeaderMap, HeaderName, HeaderValue};
@@ -30,17 +30,19 @@ enum BodyInner {
     #[default]
     Empty,
     Buffered(Vec<u8>),
-    Iter(Box<dyn Iterator<Item = Chunk>>),
+    Iter(Box<dyn Iterator<Item = io::Result<Chunk>>>),
     Reader(Box<dyn Read>, Option<usize>),
 }
 
 /// The sender half of a channel, used to stream chunks from another thread.
-pub struct BodyChannel(Sender<Chunk>);
+pub struct BodyChannel(Sender<io::Result<Chunk>>);
 
 impl BodyChannel {
     /// Send a chunk of bytes to this body.
-    pub fn send<T: Into<Vec<u8>>>(&self, data: T) -> Result<(), SendError<Chunk>> {
-        self.0.send(data.into().into())
+    pub fn send<T: Into<Vec<u8>>>(&self, data: T) -> io::Result<()> {
+        self.0
+            .send(Ok(data.into().into()))
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "body closed"))
     }
 
     /// Send a trailer header. Note that trailers will be buffered, so you are not required to send
@@ -63,8 +65,17 @@ impl BodyChannel {
 
     /// Sends trailers to this body. Not that trailers will be buffered, so you are not required to
     /// send then only after sending all the chunks.
-    pub fn send_trailers(&self, trailers: HeaderMap) -> Result<(), SendError<Chunk>> {
-        self.0.send(Chunk::Trailers(trailers))
+    pub fn send_trailers(&self, trailers: HeaderMap) -> io::Result<()> {
+        self.0
+            .send(Ok(Chunk::Trailers(trailers)))
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "body closed"))
+    }
+
+    /// Aborts the body in an abnormal fashion.
+    pub fn abort(self) {
+        self.0
+            .send(Err(io::Error::new(io::ErrorKind::Other, "aborted")))
+            .ok();
     }
 }
 
@@ -88,7 +99,7 @@ impl Body {
     #[allow(clippy::should_implement_trait)]
     pub fn from_iter<T: Into<Chunk>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
         Body(Some(BodyInner::Iter(Box::new(
-            chunks.into_iter().map(|chunk| chunk.into()),
+            chunks.into_iter().map(|chunk| Ok(chunk.into())),
         ))))
     }
 
@@ -119,10 +130,14 @@ impl HttpBody for Body {
             BodyInner::Buffered(bytes) => BodyReader(BodyReaderInner::Buffered(Cursor::new(bytes))),
             BodyInner::Iter(chunks) => {
                 let mut chunks = chunks.filter_map(|chunk| match chunk {
-                    Chunk::Data(data) => Some(data),
-                    Chunk::Trailers(_) => None,
+                    Ok(Chunk::Data(data)) => Some(Ok(data)),
+                    Ok(Chunk::Trailers(_)) => None,
+                    Err(err) => Some(Err(err)),
                 });
-                let cursor = chunks.next().map(Cursor::new);
+                let cursor = chunks
+                    .next()
+                    .map(|chunk| chunk.unwrap_or_default())
+                    .map(Cursor::new);
                 BodyReader(BodyReaderInner::Iter(Box::new(chunks), cursor))
             }
             BodyInner::Reader(stream, Some(len)) => {
@@ -138,9 +153,12 @@ impl HttpBody for Body {
             BodyInner::Buffered(bytes) => Ok(bytes),
             BodyInner::Iter(chunks) => Ok(chunks
                 .filter_map(|chunk| match chunk {
-                    Chunk::Data(data) => Some(data),
-                    Chunk::Trailers(_) => None,
+                    Ok(Chunk::Data(data)) => Some(Ok(data)),
+                    Ok(Chunk::Trailers(_)) => None,
+                    Err(err) => Some(Err(err)),
                 })
+                .collect::<io::Result<Vec<_>>>()?
+                .into_iter()
                 .flatten()
                 .collect()),
             BodyInner::Reader(stream, Some(len)) => {
@@ -233,13 +251,16 @@ impl BodyReader {
     pub fn from_iter(iter: impl IntoIterator<Item = Vec<u8>> + 'static) -> Self {
         let mut iter = iter.into_iter();
         let cursor = iter.next().map(Cursor::new);
-        BodyReader(BodyReaderInner::Iter(Box::new(iter), cursor))
+        BodyReader(BodyReaderInner::Iter(Box::new(iter.map(Ok)), cursor))
     }
 }
 
 enum BodyReaderInner {
     Buffered(Cursor<Vec<u8>>),
-    Iter(Box<dyn Iterator<Item = Vec<u8>>>, Option<Cursor<Vec<u8>>>),
+    Iter(
+        Box<dyn Iterator<Item = io::Result<Vec<u8>>>>,
+        Option<Cursor<Vec<u8>>>,
+    ),
     Reader(Box<dyn Read>),
 }
 
@@ -256,7 +277,8 @@ impl Read for BodyReader {
                     if read > 0 {
                         return Ok(read);
                     }
-                    *leftover = iter.next().map(Cursor::new);
+                    let next = iter.next().and_then(|next| next.ok()).map(Cursor::new);
+                    *leftover = next;
                 }
                 Ok(0)
             }
@@ -277,10 +299,14 @@ impl From<Body> for BodyReader {
             BodyInner::Buffered(bytes) => bytes.into(),
             BodyInner::Iter(chunks) => {
                 let mut chunks = chunks.filter_map(|chunk| match chunk {
-                    Chunk::Data(data) => Some(data),
-                    Chunk::Trailers(_) => None,
+                    Ok(Chunk::Data(data)) => Some(Ok(data)),
+                    Ok(Chunk::Trailers(_)) => None,
+                    Err(err) => Some(Err(err)),
                 });
-                let cursor = chunks.next().map(Cursor::new);
+                let cursor = chunks
+                    .next()
+                    .map(|chunk| chunk.unwrap_or_default())
+                    .map(Cursor::new);
                 BodyReader(BodyReaderInner::Iter(Box::new(chunks), cursor))
             }
             BodyInner::Reader(stream, Some(len)) => {
@@ -305,42 +331,44 @@ impl ChunkIterator {
 
 enum ChunkIteratorInner {
     Single(Vec<u8>),
-    Iter(Box<dyn Iterator<Item = Chunk>>),
+    Iter(Box<dyn Iterator<Item = io::Result<Chunk>>>),
     Reader(Box<dyn Read>, Option<usize>),
 }
 
 impl Iterator for ChunkIterator {
-    type Item = Chunk;
+    type Item = io::Result<Chunk>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.0.take()? {
-            ChunkIteratorInner::Single(bytes) => Some(bytes.into()),
+            ChunkIteratorInner::Single(bytes) => Some(Ok(bytes.into())),
             ChunkIteratorInner::Iter(mut iter) => {
-                let item = iter.next()?;
+                let item = iter.next()?.ok()?;
                 self.0 = Some(ChunkIteratorInner::Iter(iter));
-                Some(item)
+                Some(Ok(item))
             }
             ChunkIteratorInner::Reader(mut reader, Some(len)) => {
                 let mut buf = [0_u8; 8 * 1024];
-                match reader.read(&mut buf).ok()? {
-                    0 => None,
-                    bytes => {
+                match reader.read(&mut buf) {
+                    Ok(0) => None,
+                    Ok(bytes) => {
                         self.0 = match len.checked_sub(bytes) {
                             r @ Some(rem) if rem > 0 => Some(ChunkIteratorInner::Reader(reader, r)),
                             _ => None,
                         };
-                        Some(buf[0..bytes].to_vec().into())
+                        Some(Ok(buf[0..bytes].to_vec().into()))
                     }
+                    Err(err) => Some(Err(err)),
                 }
             }
             ChunkIteratorInner::Reader(mut reader, None) => {
                 let mut buf = [0_u8; 8 * 1024];
-                match reader.read(&mut buf).ok()? {
-                    0 => None,
-                    bytes => {
+                match reader.read(&mut buf) {
+                    Ok(0) => None,
+                    Ok(bytes) => {
                         self.0 = Some(ChunkIteratorInner::Reader(reader, None));
-                        Some(buf[0..bytes].to_vec().into())
+                        Some(Ok(buf[0..bytes].to_vec().into()))
                     }
+                    Err(err) => Some(Err(err)),
                 }
             }
         }
@@ -429,5 +457,20 @@ mod tests {
         let mut buf = Vec::new();
         reader.read_to_end(&mut buf).unwrap();
         assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn test_chunk_with_errors() {
+        let (channel, body) = Body::channel();
+        channel.send("123").unwrap();
+        channel.send("456").unwrap();
+        drop(channel);
+        assert_eq!(body.into_bytes().unwrap(), b"123456");
+
+        let (channel, body) = Body::channel();
+        channel.send("123").unwrap();
+        channel.send("456").unwrap();
+        channel.abort();
+        assert!(body.into_bytes().is_err());
     }
 }
