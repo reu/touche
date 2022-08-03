@@ -11,10 +11,8 @@ fn main() -> std::io::Result<()> {
             let mut ws = WebSocket::from_raw_socket(stream, Role::Server, None);
 
             while let Ok(msg) = ws.read_message() {
-                if msg.is_text() {
-                    if ws.write_message(msg).is_err() {
-                        break;
-                    }
+                if msg.is_text() && ws.write_message(msg).is_err() {
+                    break;
                 }
             }
         }))
