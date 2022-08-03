@@ -422,8 +422,7 @@ fn serve<C: Into<Connection>, A: Service>(stream: C, app: A) -> io::Result<()> {
                     .is_some();
 
                 let version = req.version();
-
-                let should_write_body = req.method() != Method::HEAD;
+                let method = req.method().clone();
 
                 let demands_close = match version {
                     Version::HTTP_09 => true,
@@ -463,6 +462,12 @@ fn serve<C: Into<Connection>, A: Service>(stream: C, app: A) -> io::Result<()> {
                     res.headers_mut()
                         .insert("connection", HeaderValue::from_static("close"));
                 }
+
+                let should_write_body = match method {
+                    Method::HEAD => false,
+                    Method::CONNECT => res.status().is_success(),
+                    _ => true,
+                };
 
                 match response::write_response(res, &mut writer, should_write_body)? {
                     Outcome::KeepAlive if demands_close => break,
