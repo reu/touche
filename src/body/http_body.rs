@@ -140,6 +140,7 @@ impl HttpBody for Vec<u8> {
 }
 
 /// A message of a chunked encoded body.
+#[derive(Debug)]
 pub enum Chunk {
     /// Data chunk.
     Data(Vec<u8>),
