@@ -24,7 +24,7 @@ use std::{
     error::Error,
     io::{self, BufReader, BufWriter, Write},
     net::{TcpListener, ToSocketAddrs},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use headers::{HeaderMapExt, HeaderValue};
@@ -461,6 +461,11 @@ fn serve<C: Into<Connection>, A: Service>(stream: C, app: A) -> io::Result<()> {
                 if version == Version::HTTP_10 && !asks_for_keep_alive {
                     res.headers_mut()
                         .insert("connection", HeaderValue::from_static("close"));
+                }
+
+                if res.headers().typed_get::<headers::Date>().is_none() {
+                    res.headers_mut()
+                        .typed_insert(headers::Date::from(SystemTime::now()));
                 }
 
                 let should_write_body = match method {
