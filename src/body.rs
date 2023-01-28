@@ -30,8 +30,8 @@ enum BodyInner {
     #[default]
     Empty,
     Buffered(Vec<u8>),
-    Iter(Box<dyn Iterator<Item = io::Result<Chunk>>>),
-    Reader(Box<dyn Read>, Option<usize>),
+    Iter(Box<dyn Iterator<Item = io::Result<Chunk>> + Send>),
+    Reader(Box<dyn Read + Send>, Option<usize>),
 }
 
 /// The sender half of a channel, used to stream chunks from another thread.
@@ -97,14 +97,22 @@ impl Body {
     /// Each item emitted will be written as a separated chunk on chunked encoded requests or
     /// responses.
     #[allow(clippy::should_implement_trait)]
-    pub fn from_iter<T: Into<Chunk>>(chunks: impl IntoIterator<Item = T> + 'static) -> Self {
+    pub fn from_iter<T, I>(chunks: I) -> Self
+    where
+        T: Into<Chunk>,
+        I: IntoIterator<Item = T> + Send + 'static,
+        <I as IntoIterator>::IntoIter: Send,
+    {
         Body(Some(BodyInner::Iter(Box::new(
             chunks.into_iter().map(|chunk| Ok(chunk.into())),
         ))))
     }
 
     /// Creates a [`Body`] stream from an [`Read`], with an optional length.
-    pub fn from_reader<T: Into<Option<usize>>>(reader: impl Read + 'static, length: T) -> Self {
+    pub fn from_reader<T: Into<Option<usize>>>(
+        reader: impl Read + Send + 'static,
+        length: T,
+    ) -> Self {
         Body(Some(BodyInner::Reader(Box::new(reader), length.into())))
     }
 }
@@ -242,7 +250,7 @@ pub struct BodyReader(BodyReaderInner);
 
 impl BodyReader {
     /// Creates a [`BodyReader`] from an [`Read`]
-    pub fn from_reader(reader: impl Read + 'static) -> Self {
+    pub fn from_reader(reader: impl Read + Send + 'static) -> Self {
         BodyReader(BodyReaderInner::Reader(Box::new(reader)))
     }
 
@@ -261,7 +269,7 @@ enum BodyReaderInner {
         Box<dyn Iterator<Item = io::Result<Vec<u8>>>>,
         Option<Cursor<Vec<u8>>>,
     ),
-    Reader(Box<dyn Read>),
+    Reader(Box<dyn Read + Send>),
 }
 
 impl Read for BodyReader {
