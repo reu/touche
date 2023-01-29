@@ -22,11 +22,11 @@ fn main() -> io::Result<()> {
                 .upgrade(move |conn: Connection| {
                     if let Ok(server) = TcpStream::connect(&address) {
                         match tunnel(conn.downcast().unwrap(), server) {
-                            Ok((w, r)) => eprintln!("Tunneled bytes: {} (read) {} (write)", r, w),
-                            Err(err) => eprintln!("Tunnel error: {}", err),
+                            Ok((w, r)) => eprintln!("Tunneled bytes: {r} (read) {w} (write)"),
+                            Err(err) => eprintln!("Tunnel error: {err}"),
                         };
                     } else {
-                        eprintln!("Could not connect to address: {}", address);
+                        eprintln!("Could not connect to address: {address}");
                     }
                 })
                 .body(Body::empty())
