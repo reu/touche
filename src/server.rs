@@ -124,6 +124,12 @@ pub struct Server<'a> {
     incoming: Box<dyn Iterator<Item = Connection> + 'a>,
 }
 
+impl From<TcpListener> for Server<'static> {
+    fn from(listener: TcpListener) -> Self {
+        Self::builder().from_connections(TcpAcceptor { listener })
+    }
+}
+
 impl<'a> Server<'a> {
     /// Starts the [`ServerBuilder`].
     pub fn builder() -> ServerBuilder {
@@ -322,7 +328,7 @@ impl ServerBuilder {
     /// Tries to bind the server to the informed `addr`.
     pub fn try_bind<A: ToSocketAddrs>(self, addr: A) -> io::Result<Server<'static>> {
         let listener = TcpListener::bind(addr)?;
-        Ok(self.from_connections(Box::new(TcpAcceptor { listener })))
+        Ok(self.from_connections(TcpAcceptor { listener }))
     }
 
     /// Accepts connections from some [`Iterator`].
