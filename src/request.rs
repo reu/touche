@@ -1,10 +1,10 @@
-use std::io::{self, BufRead, Read};
+use std::io::{self, BufRead, Read, Write};
 
-use headers::HeaderMapExt;
-use http::{Method, Request, Version};
+use headers::{HeaderMapExt, HeaderMap};
+use http::{Method, Request, Version, request::Parts};
 use thiserror::Error;
 
-use crate::body::Body;
+use crate::{body::{Body, Chunk}, HttpBody, response::Encoding};
 
 #[derive(Error, Debug)]
 pub enum ParseError {
@@ -99,7 +99,120 @@ pub(crate) fn parse_request(
     request.body(body).map_err(|_| ParseError::Unknown)
 }
 
-struct ChunkedReader(Box<dyn BufRead + Send>);
+pub(crate) fn write_request<B: HttpBody>(
+    req: http::Request<B>,
+    stream: &mut impl Write,
+) -> io::Result<()> {
+    let (
+        Parts {
+            method,
+            uri,
+            version,
+            mut headers,
+            ..
+        },
+        body,
+    ) = req.into_parts();
+
+    let has_chunked_encoding = headers
+        .typed_get::<headers::TransferEncoding>()
+        .filter(|te| te.is_chunked())
+        .is_some();
+
+    let content_length = headers.typed_get::<headers::ContentLength>();
+
+    let encoding = if has_chunked_encoding && version == Version::HTTP_11 {
+        Encoding::Chunked
+    } else if content_length.is_some() || body.len().is_some() {
+        match (content_length, body.len()) {
+            (Some(len), Some(body_len)) => {
+                if len.0 != body_len {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "content-length doesn't match body length",
+                    ));
+                }
+                Encoding::FixedLength(len.0)
+            }
+            (Some(len), None) => Encoding::FixedLength(len.0),
+            (None, Some(len)) => {
+                headers.typed_insert::<headers::ContentLength>(headers::ContentLength(len));
+                Encoding::FixedLength(len)
+            }
+            (None, None) => unreachable!(),
+        }
+    } else if body.len().is_none()
+        && method != Method::GET
+        && method != Method::HEAD
+        && version == Version::HTTP_11
+    {
+        headers.typed_insert::<headers::TransferEncoding>(headers::TransferEncoding::chunked());
+        Encoding::Chunked
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "could not determine the size of the body",
+        ));
+    };
+
+    let version = if version == Version::HTTP_11 {
+        "HTTP/1.1"
+    } else if version == Version::HTTP_10 {
+        "HTTP/1.0"
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "unsupported http version",
+        ));
+    };
+
+    stream.write_all(format!("{method} {uri} {version}\r\n").as_bytes())?;
+
+    for (name, val) in headers.iter() {
+        stream.write_all(&[format!("{name}: ").as_bytes(), val.as_bytes(), b"\r\n"].concat())?;
+    }
+
+    stream.write_all(b"\r\n")?;
+
+    match encoding {
+        // Just buffer small bodies
+        Encoding::FixedLength(len) if len < 1024 => {
+            stream.write_all(&body.into_bytes()?)?;
+        }
+        Encoding::FixedLength(_) | Encoding::CloseDelimited => {
+            io::copy(&mut body.into_reader(), stream)?;
+        }
+        Encoding::Chunked => {
+            let mut trailers = HeaderMap::new();
+
+            for chunk in body.into_chunks() {
+                match chunk? {
+                    Chunk::Data(chunk) => {
+                        stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes())?;
+                        stream.write_all(&chunk)?;
+                        stream.write_all(b"\r\n")?;
+                        stream.flush()?;
+                    }
+                    Chunk::Trailers(te) => {
+                        trailers.extend(te);
+                    }
+                }
+            }
+
+            stream.write_all(b"0\r\n")?;
+            for (name, val) in trailers.iter() {
+                stream.write_all(
+                    &[format!("{name}: ").as_bytes(), val.as_bytes(), b"\r\n"].concat(),
+                )?;
+            }
+            stream.write_all(b"\r\n")?;
+        }
+    };
+
+    Ok(())
+}
+
+pub(crate) struct ChunkedReader(pub(crate) Box<dyn BufRead + Send>);
 
 impl Iterator for ChunkedReader {
     type Item = Vec<u8>;

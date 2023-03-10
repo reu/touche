@@ -5,6 +5,7 @@ mod connection;
 mod read_queue;
 mod request;
 mod response;
+pub mod client;
 pub mod server;
 #[cfg(feature = "rustls")]
 mod tls;

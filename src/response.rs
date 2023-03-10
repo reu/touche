@@ -1,12 +1,17 @@
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 
 use headers::{HeaderMap, HeaderMapExt};
-use http::{response::Parts, Version};
+use http::{response::Parts, StatusCode, Version};
 
-use crate::{body::Chunk, upgrade::UpgradeExtension, HttpBody};
+use crate::{
+    body::Chunk,
+    request::{ChunkedReader, ParseError},
+    upgrade::UpgradeExtension,
+    Body, HttpBody,
+};
 
 #[derive(PartialEq, Eq)]
-enum Encoding {
+pub(crate) enum Encoding {
     FixedLength(u64),
     Chunked,
     CloseDelimited,
@@ -16,6 +21,80 @@ pub(crate) enum Outcome {
     Close,
     KeepAlive,
     Upgrade(UpgradeExtension),
+}
+
+pub(crate) fn parse_response(
+    mut stream: impl BufRead + Send + 'static,
+) -> Result<http::Response<Body>, ParseError> {
+    let mut buf = Vec::with_capacity(800);
+
+    loop {
+        if stream.read_until(b'\n', &mut buf)? == 0 {
+            break;
+        }
+
+        match buf.as_slice() {
+            [.., b'\r', b'\n', b'\r', b'\n'] => break,
+            [.., b'\n', b'\n'] => break,
+            _ => continue,
+        }
+    }
+
+    if buf.is_empty() {
+        return Err(ParseError::IncompleteRequest);
+    }
+
+    let mut headers = [httparse::EMPTY_HEADER; 64];
+    let mut res = httparse::Response::new(&mut headers);
+    res.parse(&buf)?;
+
+    let status = res
+        .code
+        .and_then(|code| StatusCode::from_u16(code).ok())
+        .ok_or(ParseError::IncompleteRequest)?;
+
+    let version = match res.version.ok_or(ParseError::IncompleteRequest)? {
+        0 => Version::HTTP_10,
+        1 => Version::HTTP_11,
+        version => return Err(ParseError::UnsupportedHttpVersion(version)),
+    };
+
+    let res = http::Response::builder().version(version).status(status);
+
+    let res = headers
+        .into_iter()
+        .take_while(|header| *header != httparse::EMPTY_HEADER)
+        .map(|header| (header.name, header.value))
+        .fold(res, |res, (name, value)| res.header(name, value));
+
+    let headers = res.headers_ref().ok_or(ParseError::Unknown)?;
+
+    let body = if let Some(encoding) = headers.typed_try_get::<headers::TransferEncoding>()? {
+        if !encoding.is_chunked() {
+            // https://datatracker.ietf.org/doc/html/rfc2616#section-3.6
+            return Err(ParseError::InvalidTransferEncoding);
+        }
+        Body::from_iter(ChunkedReader(Box::new(stream)))
+    } else if let Some(len) = headers.typed_try_get::<headers::ContentLength>()? {
+        // Let's automatically buffer small bodies
+        if len.0 < 1024 {
+            let mut buf = vec![0_u8; len.0 as usize];
+            stream.read_exact(&mut buf)?;
+            Body::from(buf)
+        } else {
+            Body::from_reader(stream, len.0 as usize)
+        }
+    } else if headers
+        .typed_get::<headers::Connection>()
+        .filter(|conn| conn.contains("close"))
+        .is_some()
+    {
+        Body::from_reader(stream, None)
+    } else {
+        Body::empty()
+    };
+
+    res.body(body).map_err(|_| ParseError::Unknown)
 }
 
 pub(crate) fn write_response<B: HttpBody>(
@@ -433,5 +512,73 @@ mod tests {
             b"HTTP/1.0 200 OK\r\nconnection: close\r\n\r\nlol"
         );
         assert!(matches!(outcome, Outcome::Close));
+    }
+
+    #[test]
+    fn parse_response_without_body() {
+        let res = "HTTP/1.1 200 OK\r\ndate: Mon, 25 Jul 2022 21:34:35 GMT\r\n\r\n";
+        let res = Cursor::new(res);
+
+        let res = parse_response(res).unwrap();
+
+        assert_eq!(Version::HTTP_11, res.version());
+        assert_eq!(StatusCode::OK, res.status());
+        assert_eq!(
+            Some("Mon, 25 Jul 2022 21:34:35 GMT"),
+            res.headers()
+                .get(http::header::DATE)
+                .and_then(|v| v.to_str().ok())
+        );
+    }
+
+    #[test]
+    fn parse_response_with_content_length_body() {
+        let res = "HTTP/1.1 200 OK\r\ncontent-length: 6\r\n\r\nlolwut ignored";
+        let res = Cursor::new(res);
+
+        let res = parse_response(res).unwrap();
+
+        assert_eq!(res.into_body().into_bytes().unwrap(), b"lolwut");
+    }
+
+    #[test]
+    fn parse_response_with_chunked_body() {
+        let res = "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3\r\nlol\r\n3\r\nwut\r\n0\r\n\r\n";
+        let res = Cursor::new(res);
+
+        let res = parse_response(res).unwrap();
+
+        assert_eq!(res.into_body().into_bytes().unwrap(), b"lolwut");
+    }
+
+    #[test]
+    fn parse_response_with_chunked_body_and_extensions() {
+        let res = "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3;extension\r\nlol\r\n3\r\nwut\r\n0\r\n\r\n";
+        let res = Cursor::new(res);
+
+        let res = parse_response(res).unwrap();
+
+        assert_eq!(res.into_body().into_bytes().unwrap(), b"lolwut");
+    }
+
+    #[test]
+    fn parse_response_with_streaming_body() {
+        let res = b"HTTP/1.1 200 OK\r\ncontent-length: 2048\r\n\r\n";
+        let body = [65_u8; 2048];
+        let res = Cursor::new([res.as_ref(), body.as_ref()].concat());
+
+        let res = parse_response(res).unwrap();
+
+        assert_eq!(res.into_body().into_bytes().unwrap(), body);
+    }
+
+    #[test]
+    fn parse_response_with_close_delimited_body() {
+        let res = "HTTP/1.1 200 OK\r\nconnection: close\r\n\r\nlolwut";
+        let res = Cursor::new(res);
+
+        let res = parse_response(res).unwrap();
+
+        assert_eq!(res.into_body().into_bytes().unwrap(), b"lolwut");
     }
 }
