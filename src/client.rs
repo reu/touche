@@ -1,10 +1,79 @@
-use std::io::{self, BufReader, BufWriter, Write};
+use std::{
+    collections::HashMap,
+    io::{self, BufReader, BufWriter, Write},
+    net::TcpStream,
+};
 
 use headers::HeaderMapExt;
-use http::StatusCode;
+use http::{header::HOST, uri::Authority, StatusCode};
+use thiserror::Error;
 
 use crate::{request, response, Body, Connection, HttpBody};
 
+#[derive(Debug, Error)]
+pub enum RequestError {
+    #[error("invalid uri")]
+    InvalidUri,
+    #[error("unsupported scheme")]
+    UnsupportedScheme,
+    #[error("unsupported http version: {0}")]
+    UnsupportedHttpVersion(u8),
+    #[error("io error")]
+    Io(#[from] io::Error),
+    #[error("invalid request")]
+    InvalidRequest(#[from] Box<RequestError>),
+}
+
+#[derive(Debug)]
+pub struct Client {
+    connections: HashMap<Authority, Connection>,
+}
+
+impl Client {
+    pub fn new() -> Self {
+        Client {
+            connections: Default::default(),
+        }
+    }
+
+    pub fn request<B: HttpBody>(
+        &mut self,
+        mut req: http::Request<B>,
+    ) -> Result<http::Response<Body>, RequestError> {
+        let authority = req
+            .uri()
+            .authority()
+            .ok_or(RequestError::InvalidUri)?
+            .clone();
+
+        let host = authority.host().to_string();
+        let port = authority.port_u16().unwrap_or(80);
+
+        let connection = match self.connections.remove(&authority) {
+            Some(conn) => conn,
+            None => TcpStream::connect(&format!("{host}:{port}"))?.into(),
+        };
+
+        req.headers_mut()
+            .insert(HOST, host.as_str().try_into().unwrap());
+
+        let (connection, mut res) = send(connection, req)?;
+
+        match connection {
+            ConnectionOutcome::Close => Ok(res),
+            ConnectionOutcome::Upgrade(conn) => {
+                res.extensions_mut().insert(conn);
+                Ok(res)
+            }
+            ConnectionOutcome::KeepAlive(conn) => {
+                self.connections.insert(authority, conn);
+                Ok(res)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ConnectionOutcome {
     Close,
     KeepAlive(Connection),
@@ -82,6 +151,43 @@ mod tests {
     use crate::Server;
 
     use super::*;
+
+    #[test]
+    fn test_client() {
+        let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        thread::spawn(move || {
+            Server::from(listener)
+                .serve(|req: Request<_>| http::Response::builder().body(req.into_body()))
+                .ok()
+        });
+
+        let mut client = Client::new();
+        let uri = format!("http://localhost:{port}");
+
+        let res = client
+            .request(
+                http::Request::builder()
+                    .uri(&uri)
+                    .method("POST")
+                    .body("Hello world")
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(res.into_body().into_bytes().unwrap(), b"Hello world");
+
+        let res = client
+            .request(
+                http::Request::builder()
+                    .uri(&uri)
+                    .method("POST")
+                    .body("Bye world")
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(res.into_body().into_bytes().unwrap(), b"Bye world");
+    }
 
     #[test]
     fn send_request() {

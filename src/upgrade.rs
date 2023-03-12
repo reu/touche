@@ -1,3 +1,5 @@
+use thiserror::Error;
+
 use crate::connection::Connection;
 
 pub trait UpgradeHandler: Sync + Send {
@@ -32,5 +34,23 @@ impl<T> Upgrade for http::Response<T> {
             handler: Box::new(handle),
         });
         self
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ClientUpgradeError {
+    #[error("connection not upgradable")]
+    ConnectionNotUpgradable,
+}
+
+pub trait ClientUpgrade {
+    fn into_upgraded(self) -> Result<Connection, ClientUpgradeError>;
+}
+
+impl<T> ClientUpgrade for http::Response<T> {
+    fn into_upgraded(mut self) -> Result<Connection, ClientUpgradeError> {
+        self.extensions_mut()
+            .remove()
+            .ok_or(ClientUpgradeError::ConnectionNotUpgradable)
     }
 }
