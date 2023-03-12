@@ -1,10 +1,14 @@
 use std::io::{self, BufRead, Read, Write};
 
-use headers::{HeaderMapExt, HeaderMap};
-use http::{Method, Request, Version, request::Parts};
+use headers::{HeaderMap, HeaderMapExt};
+use http::{request::Parts, Method, Request, Version};
 use thiserror::Error;
 
-use crate::{body::{Body, Chunk}, HttpBody, response::Encoding};
+use crate::{
+    body::{Body, Chunk},
+    response::Encoding,
+    HttpBody,
+};
 
 #[derive(Error, Debug)]
 pub enum ParseError {
