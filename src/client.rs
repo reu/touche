@@ -24,7 +24,7 @@ pub enum RequestError {
     InvalidRequest(#[from] Box<RequestError>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Client {
     connections: HashMap<Authority, Connection>,
 }
@@ -51,7 +51,7 @@ impl Client {
 
         let connection = match self.connections.remove(&authority) {
             Some(conn) => conn,
-            None => TcpStream::connect(&format!("{host}:{port}"))?.into(),
+            None => TcpStream::connect(format!("{host}:{port}"))?.into(),
         };
 
         req.headers_mut()
