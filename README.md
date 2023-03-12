@@ -137,7 +137,7 @@ fn main() -> std::io::Result<()> {
 ```rust no_run
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
-use touche::{header, upgrade::Upgrade, Connection, Response, Server, StatusCode};
+use touche::{header, upgrade::Upgrade, Body, Connection, Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
     Server::bind("0.0.0.0:4444").serve(|_req| {
@@ -160,7 +160,7 @@ fn main() -> std::io::Result<()> {
                     };
                 }
             })
-            .body("Upgrading...\n")
+            .body(Body::empty())
     })
 }
 ```
