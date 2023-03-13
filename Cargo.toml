@@ -1,6 +1,6 @@
 [package]
 name = "touche"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2021"
 authors = ["Rodrigo Navarro <rnavarro@rnavarro.com.br>"]
 license = "MIT"
@@ -8,6 +8,12 @@ description = "Synchronous HTTP library"
 repository = "https://github.com/reu/touche"
 categories = ["network-programming", "web-programming"]
 keywords = ["web", "http", "protocol"]
+
+[features]
+default = ["server"]
+full = ["client", "server"]
+server = ["threadpool"]
+client = []
 
 [package.metadata.docs.rs]
 all-features = true
@@ -18,7 +24,7 @@ http = "0.2.8"
 httparse = "1.7.1"
 rustls = { version = "0.20.6", optional = true, default-features = false }
 thiserror = "1.0.31"
-threadpool = "1.8.1"
+threadpool = { version = "1.8.1", optional = true, default-features = false }
 
 [dev-dependencies]
 base64 = "0.13.0"
