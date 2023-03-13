@@ -31,7 +31,7 @@ pub enum ParseError {
 }
 
 pub(crate) fn parse_request(
-    mut stream: impl BufRead + Send + 'static,
+    mut stream: impl BufRead + 'static,
 ) -> Result<Request<Body>, ParseError> {
     let mut buf = Vec::with_capacity(800);
 
@@ -216,7 +216,7 @@ pub(crate) fn write_request<B: HttpBody>(
     Ok(())
 }
 
-pub(crate) struct ChunkedReader(pub(crate) Box<dyn BufRead + Send>);
+pub(crate) struct ChunkedReader(pub(crate) Box<dyn BufRead>);
 
 impl Iterator for ChunkedReader {
     type Item = Vec<u8>;

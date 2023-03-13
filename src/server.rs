@@ -105,7 +105,6 @@ pub trait Service {
 impl<F, Body, Err> Service for F
 where
     F: Fn(IncomingRequest) -> Result<Response<Body>, Err>,
-    F: Sync + Send,
     F: Clone,
     Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
@@ -146,7 +145,7 @@ impl<'a> Server<'a> {
         Self::builder().bind(addr)
     }
 
-    /// Serves an [`Service`].
+    /// Serves an [`Service`] on a thread per connection model, backed by a thread pool.
     ///
     /// # Example
     /// ```no_run
@@ -174,6 +173,32 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
+    /// Serves an [`Service`] on a single thread. This is useful when your [`Service`] is not
+    /// [`Send`]. Note that if a connection is kept alive on this mode, no other request may be
+    /// served before the said connection is closed.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use touche::{Request, Response, Server, StatusCode};
+    /// # fn main() -> std::io::Result<()> {
+    /// Server::bind("0.0.0.0:4444").serve_single_thread(|req: Request<_>| {
+    ///     Response::builder()
+    ///         .status(StatusCode::OK)
+    ///         .body(req.into_body())
+    /// })
+    /// # }
+    /// ```
+    pub fn serve_single_thread<S>(self, service: S) -> io::Result<()>
+    where
+        S: Service + Clone,
+    {
+        for conn in self.incoming {
+            let app = service.clone();
+            serve(conn, app).ok();
+        }
+        Ok(())
+    }
+
     /// Serves an [`Connection`]. This should be used when you need to execute some logic on every
     /// connection.
     ///
@@ -198,7 +223,8 @@ impl<'a> Server<'a> {
     pub fn make_service<M>(self, make_service: M) -> io::Result<()>
     where
         M: MakeService,
-        M: Send + Clone + 'static,
+        M: Clone + 'static,
+        <M as MakeService>::Service: Send,
     {
         for conn in self.incoming {
             let app = make_service.clone();
@@ -382,7 +408,7 @@ impl Iterator for TcpAcceptor {
 }
 
 pub trait MakeService {
-    type Service: Service + Send;
+    type Service: Service;
     type Error: Into<Box<dyn Error + Send + Sync>>;
 
     fn call(&self, conn: &Connection) -> Result<Self::Service, Self::Error>;
@@ -391,7 +417,6 @@ pub trait MakeService {
 impl<F, S, Err> MakeService for F
 where
     F: Fn(&Connection) -> Result<S, Err>,
-    F: Sync + Send + Clone,
     Err: Into<Box<dyn Error + Send + Sync>>,
     S: Service + Send,
 {

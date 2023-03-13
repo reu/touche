@@ -24,7 +24,7 @@ pub(crate) enum Outcome {
 }
 
 pub(crate) fn parse_response(
-    mut stream: impl BufRead + Send + 'static,
+    mut stream: impl BufRead + 'static,
 ) -> Result<http::Response<Body>, ParseError> {
     let mut buf = Vec::with_capacity(800);
 
