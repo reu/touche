@@ -105,7 +105,6 @@ pub trait Service {
 impl<F, Body, Err> Service for F
 where
     F: Fn(IncomingRequest) -> Result<Response<Body>, Err>,
-    F: Clone,
     Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
