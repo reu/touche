@@ -1,13 +1,17 @@
-use std::io::{self, BufRead, Write};
+#[cfg(any(feature = "client", test))]
+use std::io::BufRead;
+use std::io::{self, Write};
 
 use headers::{HeaderMap, HeaderMapExt};
-use http::{response::Parts, StatusCode, Version};
+#[cfg(any(feature = "client", test))]
+use http::StatusCode;
+use http::{response::Parts, Version};
 
+use crate::{body::Chunk, upgrade::UpgradeExtension, HttpBody};
+#[cfg(any(feature = "client", test))]
 use crate::{
-    body::Chunk,
     request::{ChunkedReader, ParseError},
-    upgrade::UpgradeExtension,
-    Body, HttpBody,
+    Body,
 };
 
 #[derive(PartialEq, Eq)]
@@ -23,6 +27,7 @@ pub(crate) enum Outcome {
     Upgrade(UpgradeExtension),
 }
 
+#[cfg(any(feature = "client", test))]
 pub(crate) fn parse_response(
     mut stream: impl BufRead + 'static,
 ) -> Result<http::Response<Body>, ParseError> {
@@ -97,6 +102,7 @@ pub(crate) fn parse_response(
     res.body(body).map_err(|_| ParseError::Unknown)
 }
 
+#[cfg(feature = "server")]
 pub(crate) fn write_response<B: HttpBody>(
     res: http::Response<B>,
     stream: &mut impl Write,

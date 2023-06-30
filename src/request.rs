@@ -1,14 +1,14 @@
-use std::io::{self, BufRead, Read, Write};
+#[cfg(feature = "client")]
+use std::io::Write;
+use std::io::{self, BufRead, Read};
 
-use headers::{HeaderMap, HeaderMapExt};
-use http::{request::Parts, Method, Request, Version};
+use http::Request;
 use thiserror::Error;
 
-use crate::{
-    body::{Body, Chunk},
-    response::Encoding,
-    HttpBody,
-};
+use crate::body::Body;
+
+#[cfg(feature = "client")]
+use crate::HttpBody;
 
 #[derive(Error, Debug)]
 pub enum ParseError {
@@ -30,9 +30,13 @@ pub enum ParseError {
     Unknown,
 }
 
+#[cfg(feature = "server")]
 pub(crate) fn parse_request(
     mut stream: impl BufRead + 'static,
 ) -> Result<Request<Body>, ParseError> {
+    use headers::HeaderMapExt;
+    use http::{Method, Version};
+
     let mut buf = Vec::with_capacity(800);
 
     loop {
@@ -103,10 +107,15 @@ pub(crate) fn parse_request(
     request.body(body).map_err(|_| ParseError::Unknown)
 }
 
+#[cfg(feature = "client")]
 pub(crate) fn write_request<B: HttpBody>(
     req: http::Request<B>,
     stream: &mut impl Write,
 ) -> io::Result<()> {
+    use crate::{body::Chunk, response::Encoding};
+    use headers::{HeaderMap, HeaderMapExt};
+    use http::{request::Parts, Method, Version};
+
     let (
         Parts {
             method,
@@ -248,6 +257,8 @@ impl Iterator for ChunkedReader {
 
 #[cfg(test)]
 mod test {
+    use http::Version;
+
     use crate::body::HttpBody;
 
     use super::*;
