@@ -32,7 +32,7 @@ pub enum ParseError {
 
 #[cfg(feature = "server")]
 pub(crate) fn parse_request(
-    mut stream: impl BufRead + 'static,
+    mut stream: impl BufRead + Send + 'static,
 ) -> Result<Request<Body>, ParseError> {
     use headers::HeaderMapExt;
     use http::{Method, Version};
@@ -225,7 +225,7 @@ pub(crate) fn write_request<B: HttpBody>(
     Ok(())
 }
 
-pub(crate) struct ChunkedReader(pub(crate) Box<dyn BufRead>);
+pub(crate) struct ChunkedReader(pub(crate) Box<dyn BufRead + Send>);
 
 impl Iterator for ChunkedReader {
     type Item = Vec<u8>;

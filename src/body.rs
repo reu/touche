@@ -30,8 +30,8 @@ enum BodyInner {
     #[default]
     Empty,
     Buffered(Vec<u8>),
-    Iter(Box<dyn Iterator<Item = io::Result<Chunk>>>),
-    Reader(Box<dyn Read>, Option<usize>),
+    Iter(Box<dyn Iterator<Item = io::Result<Chunk>> + Send>),
+    Reader(Box<dyn Read + Send>, Option<usize>),
 }
 
 /// The sender half of a channel, used to stream chunks from another thread.
@@ -100,7 +100,8 @@ impl Body {
     pub fn from_iter<T, I>(chunks: I) -> Self
     where
         T: Into<Chunk>,
-        I: IntoIterator<Item = T> + 'static,
+        I: IntoIterator<Item = T> + Send + 'static,
+        <I as IntoIterator>::IntoIter: Send,
     {
         Body(Some(BodyInner::Iter(Box::new(
             chunks.into_iter().map(|chunk| Ok(chunk.into())),
@@ -108,7 +109,10 @@ impl Body {
     }
 
     /// Creates a [`Body`] stream from an [`Read`], with an optional length.
-    pub fn from_reader<T: Into<Option<usize>>>(reader: impl Read + 'static, length: T) -> Self {
+    pub fn from_reader<T: Into<Option<usize>>>(
+        reader: impl Read + Send + 'static,
+        length: T,
+    ) -> Self {
         Body(Some(BodyInner::Reader(Box::new(reader), length.into())))
     }
 }

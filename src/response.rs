@@ -29,7 +29,7 @@ pub(crate) enum Outcome {
 
 #[cfg(any(feature = "client", test))]
 pub(crate) fn parse_response(
-    mut stream: impl BufRead + 'static,
+    mut stream: impl BufRead + Send + 'static,
 ) -> Result<http::Response<Body>, ParseError> {
     let mut buf = Vec::with_capacity(800);
 
