@@ -24,9 +24,7 @@ fn main() -> std::io::Result<()> {
 
                 runtime.spawn(async move {
                     let stream = TcpStream::from_std(stream).unwrap();
-                    let mut ws =
-                        WebSocketStream::<TcpStream>::from_raw_socket(stream, Role::Server, None)
-                            .await;
+                    let mut ws = WebSocketStream::from_raw_socket(stream, Role::Server, None).await;
 
                     while let Some(Ok(msg)) = ws.next().await {
                         if msg.is_text() && ws.send(msg).await.is_err() {
