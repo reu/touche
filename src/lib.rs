@@ -4,6 +4,8 @@ pub mod body;
 #[cfg(feature = "client")]
 pub mod client;
 mod connection;
+#[cfg(feature = "multipart")]
+pub mod multipart;
 mod read_queue;
 mod request;
 mod response;
