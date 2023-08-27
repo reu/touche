@@ -18,6 +18,10 @@ pub use body::HttpBody;
 #[cfg(feature = "client")]
 pub use client::Client;
 pub use connection::Connection;
+#[doc(hidden)]
+pub use http;
+#[doc(no_inline)]
+pub use http::HeaderMap;
 pub use http::{header, Method, Request, Response, StatusCode, Uri, Version};
 #[cfg(feature = "server")]
 pub use server::Server;
