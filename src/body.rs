@@ -10,6 +10,7 @@
 //!   as a "receive stream". It is also a decent default implementation for your send streams.
 use std::{
     error::Error,
+    fmt::Debug,
     fs::File,
     io::{self, Cursor, Read},
     sync::mpsc::{self, Sender},
@@ -34,7 +35,21 @@ enum BodyInner {
     Reader(Box<dyn Read + Send>, Option<usize>),
 }
 
+impl Debug for Body {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut out = f.debug_tuple("Body");
+        match self.0 {
+            Some(BodyInner::Empty) | None => out.field(&"empty"),
+            Some(BodyInner::Buffered(ref buffer)) => out.field(buffer),
+            Some(BodyInner::Iter(_)) => out.field(&"chunked"),
+            Some(BodyInner::Reader(..)) => out.field(&"streaming"),
+        };
+        out.finish()
+    }
+}
+
 /// The sender half of a channel, used to stream chunks from another thread.
+#[derive(Debug)]
 pub struct BodyChannel(Sender<io::Result<Chunk>>);
 
 impl BodyChannel {
