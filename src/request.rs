@@ -239,7 +239,7 @@ impl Iterator for ChunkedReader {
             }
 
             match httparse::parse_chunk_size(&buf) {
-                Ok(httparse::Status::Complete((_pos, size))) if size == 0 => {
+                Ok(httparse::Status::Complete((_pos, 0))) => {
                     return None;
                 }
                 Ok(httparse::Status::Complete((_pos, size))) => {
