@@ -2,9 +2,11 @@ use std::{
     any::{Any, TypeId},
     io::{self, Read, Write},
     net::{SocketAddr, TcpStream},
-    os::unix::net::UnixStream,
     time::Duration,
 };
+
+#[cfg(feature = "unix-sockets")]
+use std::os::unix::net::UnixStream;
 
 #[cfg(feature = "rustls")]
 use crate::tls::RustlsConnection;
@@ -16,6 +18,7 @@ pub struct Connection(ConnectionInner);
 #[derive(Debug)]
 enum ConnectionInner {
     Tcp(TcpStream),
+    #[cfg(feature = "unix-sockets")]
     Unix(UnixStream),
     #[cfg(feature = "rustls")]
     Rustls(RustlsConnection),
@@ -25,6 +28,7 @@ impl Connection {
     pub fn peer_addr(&self) -> Option<SocketAddr> {
         match self.0 {
             ConnectionInner::Tcp(ref tcp) => tcp.peer_addr().ok(),
+            #[cfg(feature = "unix-sockets")]
             ConnectionInner::Unix(_) => None,
             #[cfg(feature = "rustls")]
             ConnectionInner::Rustls(ref tls) => tls.peer_addr().ok(),
@@ -34,6 +38,7 @@ impl Connection {
     pub fn local_addr(&self) -> Option<SocketAddr> {
         match self.0 {
             ConnectionInner::Tcp(ref tcp) => tcp.local_addr().ok(),
+            #[cfg(feature = "unix-sockets")]
             ConnectionInner::Unix(_) => None,
             #[cfg(feature = "rustls")]
             ConnectionInner::Rustls(ref tls) => tls.local_addr().ok(),
@@ -43,6 +48,7 @@ impl Connection {
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> Result<(), io::Error> {
         match self.0 {
             ConnectionInner::Tcp(ref tcp) => tcp.set_read_timeout(timeout),
+            #[cfg(feature = "unix-sockets")]
             ConnectionInner::Unix(ref unix) => unix.set_read_timeout(timeout),
             #[cfg(feature = "rustls")]
             ConnectionInner::Rustls(ref tls) => tls.set_read_timeout(timeout),
@@ -74,6 +80,7 @@ impl Connection {
                 Ok(tcp.downcast().map(|tcp| *tcp).unwrap())
             }
 
+            #[cfg(feature = "unix-sockets")]
             ConnectionInner::Unix(unix) if Any::type_id(&unix) == TypeId::of::<T>() => {
                 let unix = Box::new(unix) as Box<dyn Any>;
                 Ok(unix.downcast().map(|unix| *unix).unwrap())
@@ -98,6 +105,7 @@ impl Read for Connection {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
             Connection(ConnectionInner::Tcp(tcp)) => tcp.read(buf),
+            #[cfg(feature = "unix-sockets")]
             Connection(ConnectionInner::Unix(unix)) => unix.read(buf),
             #[cfg(feature = "rustls")]
             Connection(ConnectionInner::Rustls(tls)) => tls.read(buf),
@@ -109,6 +117,7 @@ impl Write for Connection {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self {
             Connection(ConnectionInner::Tcp(tcp)) => tcp.write(buf),
+            #[cfg(feature = "unix-sockets")]
             Connection(ConnectionInner::Unix(unix)) => unix.write(buf),
             #[cfg(feature = "rustls")]
             Connection(ConnectionInner::Rustls(tls)) => tls.write(buf),
@@ -118,6 +127,7 @@ impl Write for Connection {
     fn flush(&mut self) -> io::Result<()> {
         match self {
             Connection(ConnectionInner::Tcp(tcp)) => tcp.flush(),
+            #[cfg(feature = "unix-sockets")]
             Connection(ConnectionInner::Unix(unix)) => unix.flush(),
             #[cfg(feature = "rustls")]
             Connection(ConnectionInner::Rustls(tls)) => tls.flush(),
@@ -131,6 +141,7 @@ impl Clone for Connection {
             Connection(ConnectionInner::Tcp(tcp)) => {
                 Connection(ConnectionInner::Tcp(tcp.try_clone().unwrap()))
             }
+            #[cfg(feature = "unix-sockets")]
             Connection(ConnectionInner::Unix(unix)) => {
                 Connection(ConnectionInner::Unix(unix.try_clone().unwrap()))
             }
@@ -154,6 +165,7 @@ impl From<(TcpStream, SocketAddr)> for Connection {
     }
 }
 
+#[cfg(feature = "unix-sockets")]
 impl From<UnixStream> for Connection {
     fn from(unix: UnixStream) -> Self {
         Connection(ConnectionInner::Unix(unix))

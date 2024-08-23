@@ -13,6 +13,7 @@ keywords = ["web", "http", "protocol"]
 default = ["server"]
 full = ["client", "server"]
 server = ["threadpool"]
+unix-sockets = []
 client = []
 
 [package.metadata.docs.rs]

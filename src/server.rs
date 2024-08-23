@@ -357,29 +357,6 @@ impl ServerBuilder {
     }
 
     /// Accepts connections from some [`Iterator`].
-    ///
-    /// # Example running the server on a Unix socket
-    /// ```no_run
-    /// # use std::os::unix::net::UnixListener;
-    /// # use touche::{Request, Response, Server, StatusCode};
-    /// # fn main() -> std::io::Result<()> {
-    /// let listener = UnixListener::bind("touche.socket")?;
-    ///
-    /// // Converting the Unix socket to a compatible [`Connection`]
-    /// let connections = listener
-    ///     .incoming()
-    ///     .filter_map(|conn| conn.ok())
-    ///     .map(|conn| conn.into());
-    ///
-    /// Server::builder()
-    ///     .from_connections(connections)
-    ///     .serve(|_req| {
-    ///         Response::builder()
-    ///             .status(StatusCode::OK)
-    ///             .body("Hello from Unix socket!")
-    ///     })
-    /// # }
-    /// ```
     pub fn from_connections<'a, T: IntoIterator<Item = Connection> + 'a>(
         self,
         conns: T,
