@@ -51,8 +51,21 @@ jobs:
           args: --all-features --all-targets -- -D warnings
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { os: ubuntu-latest, target: i686-unknown-linux-gnu, use-cross: true, cmd: --no-default-features --features full }
+          - { os: ubuntu-latest, target: i686-unknown-linux-musl, use-cross: true, cmd: --no-default-features --features full }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl, use-cross: true, cmd: --no-default-features --features full }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, cmd: --all-features }
+          - { os: macos-latest, target: x86_64-apple-darwin, cmd: --no-default-features --features full }
+          - { os: macos-latest, target: aarch64-apple-darwin, cmd: --no-default-features --features full }
+          - { os: windows-latest, target: i686-pc-windows-msvc, cmd: --no-default-features --features full }
+          - { os: windows-latest, target: x86_64-pc-windows-gnu, cmd: --no-default-features --features full }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, cmd: --no-default-features --features full }
+    name: Test ${{ matrix.job.os }} (${{ matrix.job.target }})
+    runs-on: ${{ matrix.job.os }}
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -60,7 +73,9 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+          target: ${{ matrix.job.target }}
       - uses: actions-rs/cargo@v1
         with:
+          use-cross: ${{ matrix.job.use-cross }}
           command: test
-          args: --all-features
+          args: --target=${{ matrix.job.target }} ${{ matrix.job.cmd }}
