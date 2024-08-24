@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn test_client() {
-        let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
         thread::spawn(move || {
@@ -164,7 +164,7 @@ mod tests {
         });
 
         let mut client = Client::new();
-        let uri = format!("http://localhost:{port}");
+        let uri = format!("http://127.0.0.1:{port}");
 
         let res = client
             .request(
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn send_request() {
-        let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
         thread::spawn(move || {
@@ -200,7 +200,7 @@ mod tests {
                 .ok()
         });
 
-        let conn = TcpStream::connect(("0.0.0.0", port)).unwrap();
+        let conn = TcpStream::connect(("127.0.0.1", port)).unwrap();
 
         let req = http::Request::builder().body("Hello world").unwrap();
         let (conn, res) = send(conn, req).unwrap();
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn correctly_handles_closing_connections() {
-        let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
         thread::spawn(move || {
@@ -237,7 +237,7 @@ mod tests {
                 .ok();
         });
 
-        let conn = TcpStream::connect(("0.0.0.0", port)).unwrap();
+        let conn = TcpStream::connect(("127.0.0.1", port)).unwrap();
 
         let req = http::Request::builder().body(()).unwrap();
         let (conn, res) = send(conn, req).unwrap();
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn keep_http_10_connection_alive_when_asked_to() {
-        let listener = TcpListener::bind("0.0.0.0:0").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
         thread::spawn(move || {
@@ -257,7 +257,7 @@ mod tests {
                 .ok();
         });
 
-        let conn = TcpStream::connect(("0.0.0.0", port)).unwrap();
+        let conn = TcpStream::connect(("127.0.0.1", port)).unwrap();
 
         let req = http::Request::builder()
             .version(Version::HTTP_10)
