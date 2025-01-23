@@ -95,7 +95,7 @@ pub trait Service {
     type Body: HttpBody;
     type Error: Into<Box<dyn Error + Send + Sync>>;
 
-    fn call(&self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error>;
+    fn call(&mut self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error>;
 
     fn should_continue(&self, _: &IncomingRequest) -> StatusCode {
         StatusCode::CONTINUE
@@ -104,14 +104,14 @@ pub trait Service {
 
 impl<F, Body, Err> Service for F
 where
-    F: Fn(IncomingRequest) -> Result<Response<Body>, Err>,
+    F: FnMut(IncomingRequest) -> Result<Response<Body>, Err>,
     Body: HttpBody,
     Err: Into<Box<dyn Error + Send + Sync>>,
 {
     type Body = Body;
     type Error = Err;
 
-    fn call(&self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error> {
+    fn call(&mut self, request: IncomingRequest) -> Result<Response<Self::Body>, Self::Error> {
         self(request)
     }
 }
@@ -163,9 +163,9 @@ impl<'a> Server<'a> {
         S: Send + Clone + 'static,
     {
         for conn in self.incoming {
-            let app = service.clone();
+            let mut app = service.clone();
             self.thread_pool.execute(move || {
-                serve(conn, app).ok();
+                serve(conn, &mut app).ok();
             });
         }
 
@@ -187,13 +187,12 @@ impl<'a> Server<'a> {
     /// })
     /// # }
     /// ```
-    pub fn serve_single_thread<S>(self, service: S) -> io::Result<()>
+    pub fn serve_single_thread<S>(self, mut service: S) -> io::Result<()>
     where
-        S: Service + Clone,
+        S: Service,
     {
         for conn in self.incoming {
-            let app = service.clone();
-            serve(conn, app).ok();
+            serve(conn, &mut service).ok();
         }
         Ok(())
     }
@@ -221,15 +220,13 @@ impl<'a> Server<'a> {
     /// ```
     pub fn make_service<M>(self, make_service: M) -> io::Result<()>
     where
-        M: MakeService,
-        M: Clone + 'static,
+        M: MakeService + 'static,
         <M as MakeService>::Service: Send,
     {
         for conn in self.incoming {
-            let app = make_service.clone();
-            if let Ok(handler) = app.call(&conn) {
+            if let Ok(mut handler) = make_service.call(&conn) {
                 self.thread_pool.execute(move || {
-                    serve(conn, handler).ok();
+                    serve(conn, &mut handler).ok();
                 });
             }
         }
@@ -404,7 +401,7 @@ where
     }
 }
 
-fn serve<C: Into<Connection>, A: Service>(stream: C, app: A) -> io::Result<()> {
+fn serve<C: Into<Connection>, A: Service>(stream: C, app: &mut A) -> io::Result<()> {
     let conn = stream.into();
     let mut read_queue = ReadQueue::new(BufReader::new(conn.clone()));
 
