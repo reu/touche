@@ -12,7 +12,7 @@ impl Service for UploadService {
     type Body = &'static str;
     type Error = Infallible;
 
-    fn call(&self, _req: Request<Body>) -> Result<http::Response<Self::Body>, Self::Error> {
+    fn call(&mut self, _req: Request<Body>) -> Result<http::Response<Self::Body>, Self::Error> {
         Ok(Response::builder()
             .status(StatusCode::OK)
             .body("Thanks for the info!")
