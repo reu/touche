@@ -19,7 +19,7 @@ impl Service for UploadService {
             .unwrap())
     }
 
-    fn should_continue(&self, req: &Request<Body>) -> StatusCode {
+    fn should_continue(&mut self, req: &Request<Body>) -> StatusCode {
         match req.headers().typed_get::<headers::ContentLength>() {
             Some(len) if len.0 <= self.max_length => StatusCode::CONTINUE,
             _ => StatusCode::EXPECTATION_FAILED,
