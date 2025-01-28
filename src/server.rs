@@ -128,7 +128,7 @@ impl From<TcpListener> for Server<'static> {
     }
 }
 
-impl<'a> Server<'a> {
+impl Server<'_> {
     /// Starts the [`ServerBuilder`].
     pub fn builder() -> ServerBuilder {
         Default::default()
