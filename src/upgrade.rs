@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use thiserror::Error;
 
 use crate::connection::Connection;
@@ -12,8 +14,9 @@ impl<F: Fn(Connection) + Sync + Send> UpgradeHandler for F {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct UpgradeExtension {
-    pub(crate) handler: Box<dyn UpgradeHandler + 'static>,
+    pub(crate) handler: Arc<dyn UpgradeHandler + 'static>,
 }
 
 pub trait Upgrade {
@@ -23,7 +26,7 @@ pub trait Upgrade {
 impl Upgrade for http::response::Builder {
     fn upgrade(self, handle: impl UpgradeHandler + 'static) -> Self {
         self.extension(UpgradeExtension {
-            handler: Box::new(handle),
+            handler: Arc::new(handle),
         })
     }
 }
@@ -31,7 +34,7 @@ impl Upgrade for http::response::Builder {
 impl<T> Upgrade for http::Response<T> {
     fn upgrade(mut self, handle: impl UpgradeHandler + 'static) -> Self {
         self.extensions_mut().insert(UpgradeExtension {
-            handler: Box::new(handle),
+            handler: Arc::new(handle),
         });
         self
     }

@@ -57,15 +57,16 @@ fn main() -> std::io::Result<()> {
 
                 let write_ws = thread::spawn(move || {
                     for evt in rx {
-                        let msg = tungstenite::Message::Text(serde_json::to_string(&evt).unwrap());
-                        if write_ws.write_message(msg).is_err() {
+                        let msg =
+                            tungstenite::Message::Text(serde_json::to_string(&evt).unwrap().into());
+                        if write_ws.send(msg).is_err() {
                             break;
                         }
                     }
                 });
 
                 let read_ws = thread::spawn(move || {
-                    while let Ok(msg) = read_ws.read_message() {
+                    while let Ok(msg) = read_ws.read() {
                         match msg.to_text() {
                             Ok(text) => {
                                 let text = text.to_owned();

@@ -11,8 +11,10 @@ fn main() -> std::io::Result<()> {
         sync::Arc,
     };
 
-    use rustls::{ServerConfig, ServerConnection, StreamOwned};
+    use rustls::{crypto, ServerConfig, ServerConnection, StreamOwned};
     use touche::{Response, Server, StatusCode};
+
+    crypto::ring::default_provider().install_default().ok();
 
     let listener = TcpListener::bind("0.0.0.0:4444")?;
 
@@ -21,7 +23,6 @@ fn main() -> std::io::Result<()> {
         let key = certs::load_private_key("examples/tls/key.pem")?;
 
         let cfg = ServerConfig::builder()
-            .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, key)
             .map_err(|e| io::Error::new(Other, e))?;
@@ -52,29 +53,18 @@ fn main() -> std::io::Result<()> {
 
 #[cfg(feature = "rustls")]
 mod certs {
-    use std::{
-        fs,
-        io::{self, ErrorKind::Other},
-    };
+    use std::io::{self, ErrorKind::Other};
 
-    use rustls::{Certificate, PrivateKey};
-    use rustls_pemfile as pem;
+    use rustls_pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 
-    pub fn load_certs(filename: &str) -> io::Result<Vec<Certificate>> {
-        let certfile = fs::File::open(filename)?;
-        let mut reader = io::BufReader::new(certfile);
-
-        let certs = pem::certs(&mut reader).map_err(|err| io::Error::new(Other, err))?;
-
-        Ok(certs.into_iter().map(Certificate).collect())
+    pub fn load_certs(filename: &str) -> io::Result<Vec<CertificateDer<'static>>> {
+        CertificateDer::pem_file_iter(filename)
+            .map_err(|err| io::Error::new(Other, err))?
+            .map(|cert| cert.map_err(|err| io::Error::new(Other, err)))
+            .collect()
     }
 
-    pub fn load_private_key(filename: &str) -> io::Result<PrivateKey> {
-        let keyfile = fs::File::open(filename)?;
-        let mut reader = io::BufReader::new(keyfile);
-
-        let keys = pem::rsa_private_keys(&mut reader).map_err(|err| io::Error::new(Other, err))?;
-
-        Ok(PrivateKey(keys[0].clone()))
+    pub fn load_private_key(filename: &str) -> io::Result<PrivateKeyDer<'static>> {
+        PrivateKeyDer::from_pem_file(filename).map_err(|err| io::Error::new(Other, err))
     }
 }
