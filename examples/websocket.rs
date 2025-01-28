@@ -10,8 +10,8 @@ fn main() -> std::io::Result<()> {
         Ok::<_, Box<dyn Error + Send + Sync>>(res.upgrade(|stream: Connection| {
             let mut ws = WebSocket::from_raw_socket(stream, Role::Server, None);
 
-            while let Ok(msg) = ws.read_message() {
-                if msg.is_text() && ws.write_message(msg).is_err() {
+            while let Ok(msg) = ws.read() {
+                if msg.is_text() && ws.send(msg).is_err() {
                     break;
                 }
             }
