@@ -29,6 +29,7 @@ use std::{
 
 use headers::{HeaderMapExt, HeaderValue};
 use http::{Method, Request, Response, StatusCode, Version};
+#[cfg(feature = "threadpool")]
 use threadpool::ThreadPool;
 
 use crate::{
@@ -118,6 +119,7 @@ where
 
 /// A listening HTTP server that accepts HTTP 1 connections.
 pub struct Server<'a> {
+    #[cfg(feature = "threadpool")]
     thread_pool: ThreadPool,
     incoming: Box<dyn Iterator<Item = Connection> + 'a>,
 }
@@ -157,6 +159,7 @@ impl Server<'_> {
     /// })
     /// # }
     /// ```
+    #[cfg(feature = "threadpool")]
     pub fn serve<S>(self, service: S) -> io::Result<()>
     where
         S: Service,
@@ -218,6 +221,7 @@ impl Server<'_> {
     ///     })
     /// # }
     /// ```
+    #[cfg(feature = "threadpool")]
     pub fn make_service<M>(self, make_service: M) -> io::Result<()>
     where
         M: MakeService + 'static,
@@ -236,6 +240,7 @@ impl Server<'_> {
 }
 
 pub struct ServerBuilder {
+    #[cfg(feature = "threadpool")]
     max_threads: usize,
     read_timeout: Option<Duration>,
 }
@@ -243,6 +248,7 @@ pub struct ServerBuilder {
 impl Default for ServerBuilder {
     fn default() -> Self {
         Self {
+            #[cfg(feature = "threadpool")]
             max_threads: 512,
             read_timeout: None,
         }
@@ -266,6 +272,7 @@ impl ServerBuilder {
     ///     })
     /// # }
     /// ```
+    #[cfg(feature = "threadpool")]
     pub fn max_threads(self, max_threads: usize) -> Self {
         Self {
             max_threads,
@@ -359,6 +366,7 @@ impl ServerBuilder {
         conns: T,
     ) -> Server<'a> {
         Server {
+            #[cfg(feature = "threadpool")]
             thread_pool: ThreadPool::new(self.max_threads),
             incoming: Box::new(conns.into_iter().filter_map(move |conn| {
                 conn.set_read_timeout(self.read_timeout).ok()?;

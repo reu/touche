@@ -10,9 +10,10 @@ categories = ["network-programming", "web-programming"]
 keywords = ["web", "http", "protocol"]
 
 [features]
-default = ["server"]
+default = ["server", "threadpool"]
 full = ["client", "server"]
-server = ["threadpool"]
+threadpool = ["dep:threadpool"]
+server = []
 unix-sockets = []
 client = []
 
