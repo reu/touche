@@ -37,6 +37,7 @@ Touché shares a lot of similarities with Hyper:
 - "Low level"
 - Uses the [http crate](https://crates.io/crates/http) to represent HTTP related types
 - Allows fine-grained implementations of streaming HTTP bodies
+- A simple and easy to read implementation and examples
 
 But also has some key differences:
 
@@ -220,35 +221,38 @@ You can find other examples in the [examples directory](https://github.com/reu/t
 While the primary focus is having a simple and readable implementation, the library
 shows some decent performance.
 
-A simple benchmark of the hello_world.rs example gives the following result:
+A simple benchmark of the hello-world.rs example gives the following result:
 
 ```sh
 $ cat /proc/cpuinfo | grep name | uniq
-model name      : AMD Ryzen 5 5600G with Radeon Graphics
+model name      : 13th Gen Intel(R) Core(TM) i7-13700K
 
 $ wrk --latency -t6 -c 200 -d 10s http://localhost:4444
 Running 10s test @ http://localhost:4444
   6 threads and 200 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   153.37us  391.20us  19.41ms   99.37%
-    Req/Sec    76.11k    13.21k   89.14k    82.67%
+    Latency    51.73us  450.03us  29.59ms   99.81%
+    Req/Sec   251.58k    52.42k  366.43k    70.15%
   Latency Distribution
-     50%  126.00us
-     75%  160.00us
-     90%  209.00us
-     99%  360.00us
-  4544074 requests in 10.01s, 225.35MB read
-Requests/sec: 454157.11
-Transfer/sec:     22.52MB
+     50%   36.00us
+     75%   47.00us
+     90%   71.00us
+     99%  115.00us
+  15089728 requests in 10.10s, 1.25GB read
+Requests/sec: 1494130.41
+Transfer/sec:    126.82MB
 ```
 
 The result is on par with Hyper's hello world running on the same machine.
 
 ## Disclaimer
 
-This library is by no means a critique to Hyper or to async Rust. I **really** love both of them.
-
 The main motivation I had to write this library was to be able to introduce Rust to my co-workers
-(which are mainly web developers). A synchronous library is way more beginner friendly than an
-async one, and by having an API that ressembles the "canonical" HTTP Rust library, people can
-learn Rust concepts in a easier way before adventuring through Hyper and async.
+(which are mainly web developers).
+
+Most of HTTP server libraries in Rust are async, which makes sense for the problem domain, but with
+that some additional complexity comes together, which can be overwhelming when you are just getting
+start with the language.
+
+The ideia is to provide an API that ressembles the "canonical" HTTP Rust library, so people can
+learn its concepts in a easier way before adventuring through Hyper and async Rust.

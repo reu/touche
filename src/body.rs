@@ -2,8 +2,6 @@
 //!
 //! Bodies are not buffered by default, so applications don't use memory they don't need.
 //!
-//! As [hyper](https://docs.rs/hyper) this module has two important pieces:
-//!
 //! - The [`HttpBody`] trait, which describes all possible bodies. This allows custom
 //!   implementation if you need fine-grained control on how to stream and chunk the data.
 //! - The [`Body`] concrete type, which is an implementation of [`HttpBody`] returned by touche
@@ -60,8 +58,8 @@ impl BodyChannel {
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "body closed"))
     }
 
-    /// Send a trailer header. Note that trailers will be buffered, so you are not required to send
-    /// them only after sending all the chunks.
+    /// Send a trailer header. Note that trailers are buffered, and are only sent after the last
+    /// chunk is sent
     pub fn send_trailer<K, V>(
         &self,
         header: K,
@@ -78,8 +76,8 @@ impl BodyChannel {
         Ok(self.send_trailers(trailers)?)
     }
 
-    /// Sends trailers to this body. Not that trailers will be buffered, so you are not required to
-    /// send then only after sending all the chunks.
+    /// Sends trailers to this body. Note that trailers are buffered, and are only sent after the
+    /// last chunk is sent
     pub fn send_trailers(&self, trailers: HeaderMap) -> io::Result<()> {
         self.0
             .send(Ok(Chunk::Trailers(trailers)))
