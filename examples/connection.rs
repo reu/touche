@@ -1,31 +1,22 @@
-use std::{
-    convert::Infallible,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
+use std::convert::Infallible;
 
-use touche::{Response, Server, StatusCode};
+use touche::{Connection, Response, Server, StatusCode};
 
 fn main() -> std::io::Result<()> {
-    let conns = Arc::new(AtomicUsize::new(0));
-
     Server::builder()
         .bind("0.0.0.0:4444")
-        // The explicit &_ is necessary due a regression
+        // The explicit type is necessary due a regression
         // See: https://github.com/rust-lang/rust/issues/81511
-        .make_service(move |_conn: &_| {
-            let conns = conns.clone();
-
-            conns.fetch_add(1, Ordering::Relaxed);
+        .make_service(move |_conn: &Connection| {
+            // We are now allowed to have mutable state inside this connection
+            let mut counter = 0;
 
             Ok::<_, Infallible>(move |_req| {
-                let count = conns.load(Ordering::Relaxed);
+                counter += 1;
 
                 Response::builder()
                     .status(StatusCode::OK)
-                    .body(format!("Connections: {count}"))
+                    .body(format!("Requests on this connection: {counter}"))
             })
         })
 }

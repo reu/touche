@@ -200,8 +200,8 @@ impl Server<'_> {
         Ok(())
     }
 
-    /// Serves an [`Connection`]. This should be used when you need to execute some logic on every
-    /// connection.
+    /// Hook into how a [`Connection`] handles its requests. This should be used when you need to
+    /// execute some logic on every connection.
     ///
     /// # Example
     /// ```no_run
@@ -217,6 +217,30 @@ impl Server<'_> {
     ///             Response::builder()
     ///                 .status(StatusCode::OK)
     ///                 .body(())
+    ///         })
+    ///     })
+    /// # }
+    /// ```
+    ///
+    /// # Per connection shared mutable state
+    ///
+    /// You share any state for a given Connection without having to worry about any
+    /// synchronization on it.
+    /// ```no_run
+    /// # use std::convert::Infallible;
+    /// # use touche::{Connection, Response, Server, StatusCode};
+    /// # fn main() -> std::io::Result<()> {
+    /// Server::builder()
+    ///     .bind("0.0.0.0:4444")
+    ///     .make_service(move |_conn: &Connection| {
+    ///         let mut counter = 0;
+    ///
+    ///         Ok::<_, Infallible>(move |_req| {
+    ///             counter += 1;
+    ///
+    ///             Response::builder()
+    ///                 .status(StatusCode::OK)
+    ///                 .body(format!("Requests on this connection: {counter}"))
     ///         })
     ///     })
     /// # }
