@@ -267,6 +267,7 @@ pub struct ServerBuilder {
     #[cfg(feature = "threadpool")]
     max_threads: usize,
     read_timeout: Option<Duration>,
+    nodelay: bool,
 }
 
 impl Default for ServerBuilder {
@@ -275,6 +276,7 @@ impl Default for ServerBuilder {
             #[cfg(feature = "threadpool")]
             max_threads: 512,
             read_timeout: None,
+            nodelay: false,
         }
     }
 }
@@ -368,6 +370,18 @@ impl ServerBuilder {
         }
     }
 
+    /// Sets the value of the `TCP_NODELAY` option on every server connection by default.
+    ///
+    /// If set, this option disables the Nagle algorithm. This means that segments are always sent
+    /// as soon as possible, even if there is only a small amount of data. When not set, data is
+    /// buffered until there is a sufficient amount to send out, thereby avoiding the frequent
+    /// sending of small packets.
+    ///
+    /// Note that you can also set this option per [`Connection`].
+    pub fn nodelay(self, nodelay: bool) -> Self {
+        Self { nodelay, ..self }
+    }
+
     /// Binds the [`Server`] to the given `addr`.
     ///
     /// # Panics
@@ -394,6 +408,7 @@ impl ServerBuilder {
             thread_pool: ThreadPool::new(self.max_threads),
             incoming: Box::new(conns.into_iter().filter_map(move |conn| {
                 conn.set_read_timeout(self.read_timeout).ok()?;
+                conn.set_nodelay(self.nodelay).ok()?;
                 Some(conn)
             })),
         }

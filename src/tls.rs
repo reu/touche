@@ -17,6 +17,12 @@ impl RustlsConnection {
         Ok(())
     }
 
+    pub(crate) fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        let stream = self.0.lock().unwrap();
+        stream.get_ref().set_nodelay(nodelay)?;
+        Ok(())
+    }
+
     pub(crate) fn into_inner(self) -> Result<StreamOwned<ServerConnection, TcpStream>, Self> {
         match Arc::try_unwrap(self.0) {
             Ok(conn) => Ok(conn.into_inner().unwrap()),

@@ -55,6 +55,16 @@ impl Connection {
         }
     }
 
+    pub fn set_nodelay(&self, nodelay: bool) -> Result<(), io::Error> {
+        match self.0 {
+            ConnectionInner::Tcp(ref tcp) => tcp.set_nodelay(nodelay),
+            #[cfg(feature = "unix-sockets")]
+            ConnectionInner::Unix(_) => Ok(()),
+            #[cfg(feature = "rustls")]
+            ConnectionInner::Rustls(ref tls) => tls.set_nodelay(nodelay),
+        }
+    }
+
     /// Attempts to downcast the [`Connection`] into the underlying stream.
     /// On error returns the [`Connection`] back.
     ///
