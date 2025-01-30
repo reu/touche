@@ -57,7 +57,7 @@ impl Client {
         req.headers_mut()
             .insert(HOST, host.as_str().try_into().unwrap());
 
-        let (connection, mut res) = send(connection, req)?;
+        let (connection, mut res) = send_request(connection, req)?;
 
         match connection {
             ConnectionOutcome::Close => Ok(res),
@@ -102,7 +102,7 @@ impl ConnectionOutcome {
     }
 }
 
-pub fn send<C, B>(
+pub fn send_request<C, B>(
     connection: C,
     req: http::Request<B>,
 ) -> io::Result<(ConnectionOutcome, http::Response<Body>)>
@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn send_request() {
+    fn test_send_request() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
@@ -203,22 +203,22 @@ mod tests {
         let conn = TcpStream::connect(("127.0.0.1", port)).unwrap();
 
         let req = http::Request::builder().body("Hello world").unwrap();
-        let (conn, res) = send(conn, req).unwrap();
+        let (conn, res) = send_request(conn, req).unwrap();
         assert_eq!(res.into_body().into_bytes().unwrap(), b"Hello world");
 
         let req = http::Request::builder().body("Bye world").unwrap();
-        let (conn, res) = send(conn.unwrap(), req).unwrap();
+        let (conn, res) = send_request(conn.unwrap(), req).unwrap();
         assert_eq!(res.into_body().into_bytes().unwrap(), b"Bye world");
 
         let req = http::Request::builder().body(()).unwrap();
-        let (conn, res) = send(conn.unwrap(), req).unwrap();
+        let (conn, res) = send_request(conn.unwrap(), req).unwrap();
         assert_eq!(res.into_body().into_bytes().unwrap(), b"");
 
         let req = http::Request::builder()
             .header("transfer-encoding", "chunked")
             .body(Body::from_iter(vec![&b"lol"[..], &b"wut"[..]]))
             .unwrap();
-        let (_conn, res) = send(conn.unwrap(), req).unwrap();
+        let (_conn, res) = send_request(conn.unwrap(), req).unwrap();
         assert_eq!(res.into_body().into_bytes().unwrap(), b"lolwut");
     }
 
@@ -240,7 +240,7 @@ mod tests {
         let conn = TcpStream::connect(("127.0.0.1", port)).unwrap();
 
         let req = http::Request::builder().body(()).unwrap();
-        let (conn, res) = send(conn, req).unwrap();
+        let (conn, res) = send_request(conn, req).unwrap();
 
         assert_eq!(res.into_body().into_bytes().unwrap(), b"lolwut");
         assert!(conn.closed());
@@ -265,7 +265,7 @@ mod tests {
             .body(())
             .unwrap();
 
-        let (conn, res) = send(conn, req).unwrap();
+        let (conn, res) = send_request(conn, req).unwrap();
 
         assert_eq!(res.into_body().into_bytes().unwrap(), b"lolwut");
         assert!(matches!(conn, ConnectionOutcome::KeepAlive(_)));
@@ -275,7 +275,7 @@ mod tests {
             .body(())
             .unwrap();
 
-        let (conn, res) = send(conn.unwrap(), req).unwrap();
+        let (conn, res) = send_request(conn.unwrap(), req).unwrap();
 
         assert_eq!(res.into_body().into_bytes().unwrap(), b"lolwut");
         assert!(matches!(conn, ConnectionOutcome::Close));
