@@ -38,8 +38,7 @@ fn main() -> std::io::Result<()> {
                 ServerConnection::new(tls_cfg.clone()).ok()?,
                 conn,
             ))
-        })
-        .map(|tls_conn| tls_conn.into());
+        });
 
     Server::builder()
         .max_threads(100)

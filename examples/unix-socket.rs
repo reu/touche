@@ -8,14 +8,9 @@ fn main() -> std::io::Result<()> {
 
     let listener = UnixListener::bind("./examples/unix-socket.socket")?;
 
-    let connections = listener
-        .incoming()
-        .filter_map(|conn| conn.ok())
-        .map(|conn| conn.into());
-
     Server::builder()
         .max_threads(100)
-        .from_connections(connections)
+        .from_connections(listener.incoming().filter_map(|conn| conn.ok()))
         .serve(|_req| {
             Response::builder()
                 .status(StatusCode::OK)

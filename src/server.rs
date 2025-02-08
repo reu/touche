@@ -399,14 +399,15 @@ impl ServerBuilder {
     }
 
     /// Accepts connections from some [`Iterator`].
-    pub fn from_connections<'a, T: IntoIterator<Item = Connection> + 'a>(
+    pub fn from_connections<'a, C: Into<Connection>>(
         self,
-        conns: T,
+        conns: impl IntoIterator<Item = C> + 'a,
     ) -> Server<'a> {
         Server {
             #[cfg(feature = "threadpool")]
             thread_pool: ThreadPool::new(self.max_threads),
             incoming: Box::new(conns.into_iter().filter_map(move |conn| {
+                let conn = conn.into();
                 conn.set_read_timeout(self.read_timeout).ok()?;
                 conn.set_nodelay(self.nodelay).ok()?;
                 Some(conn)
@@ -448,8 +449,7 @@ where
     }
 }
 
-fn serve<C: Into<Connection>, A: Service>(stream: C, app: &mut A) -> io::Result<()> {
-    let conn = stream.into();
+fn serve<A: Service>(conn: Connection, app: &mut A) -> io::Result<()> {
     let mut read_queue = ReadQueue::new(BufReader::new(conn.clone()));
 
     let mut reader = read_queue.enqueue();
