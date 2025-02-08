@@ -183,10 +183,12 @@ impl Server<'_> {
     /// ```no_run
     /// # use touche::{Request, Response, Server, StatusCode};
     /// # fn main() -> std::io::Result<()> {
-    /// Server::bind("0.0.0.0:4444").serve_single_thread(|req: Request<_>| {
+    /// let mut counter = 0;
+    /// Server::bind("0.0.0.0:4444").serve_single_thread(|_req| {
+    ///     counter += 1;
     ///     Response::builder()
     ///         .status(StatusCode::OK)
-    ///         .body(req.into_body())
+    ///         .body(format!("Request count: {}", counter))
     /// })
     /// # }
     /// ```
@@ -232,7 +234,7 @@ impl Server<'_> {
     /// # fn main() -> std::io::Result<()> {
     /// Server::builder()
     ///     .bind("0.0.0.0:4444")
-    ///     .make_service(move |_conn: &Connection| {
+    ///     .make_service(|_conn: &Connection| {
     ///         let mut counter = 0;
     ///
     ///         Ok::<_, Infallible>(move |_req| {
