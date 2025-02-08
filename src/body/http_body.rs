@@ -3,6 +3,8 @@ use std::{
     iter,
 };
 
+#[cfg(feature = "bytes")]
+use bytes::{Buf, Bytes, BytesMut};
 use headers::HeaderMap;
 
 /// Trait representing a streaming body
@@ -132,6 +134,50 @@ impl HttpBody for Vec<u8> {
 
     fn into_bytes(self) -> io::Result<Vec<u8>> {
         Ok(self)
+    }
+
+    fn into_chunks(self) -> Self::Chunks {
+        iter::once(Ok(self.into()))
+    }
+}
+
+#[cfg(feature = "bytes")]
+impl HttpBody for Bytes {
+    type Reader = bytes::buf::Reader<Bytes>;
+    type Chunks = iter::Once<io::Result<Chunk>>;
+
+    fn len(&self) -> Option<u64> {
+        self.len().try_into().ok()
+    }
+
+    fn into_reader(self) -> Self::Reader {
+        self.reader()
+    }
+
+    fn into_bytes(self) -> io::Result<Vec<u8>> {
+        Ok(self.to_vec())
+    }
+
+    fn into_chunks(self) -> Self::Chunks {
+        iter::once(Ok(self.into()))
+    }
+}
+
+#[cfg(feature = "bytes")]
+impl HttpBody for BytesMut {
+    type Reader = bytes::buf::Reader<BytesMut>;
+    type Chunks = iter::Once<io::Result<Chunk>>;
+
+    fn len(&self) -> Option<u64> {
+        self.len().try_into().ok()
+    }
+
+    fn into_reader(self) -> Self::Reader {
+        self.reader()
+    }
+
+    fn into_bytes(self) -> io::Result<Vec<u8>> {
+        Ok(self.to_vec())
     }
 
     fn into_chunks(self) -> Self::Chunks {
