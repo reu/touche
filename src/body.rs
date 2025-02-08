@@ -11,6 +11,7 @@ use std::{
     fmt::Debug,
     fs::File,
     io::{self, Cursor, Read},
+    path::PathBuf,
     sync::mpsc::{self, Sender},
 };
 
@@ -255,6 +256,14 @@ impl TryFrom<File> for Body {
             Ok(_) => Err(io::Error::new(io::ErrorKind::Other, "not a file")),
             Err(err) => Err(err),
         }
+    }
+}
+
+impl TryFrom<PathBuf> for Body {
+    type Error = io::Error;
+
+    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
+        File::open(path)?.try_into()
     }
 }
 
